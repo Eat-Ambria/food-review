@@ -103,7 +103,7 @@ self.addEventListener('push', (event) => {
     body: data.body || '',
     tag: data.tag || 'issue-desk',
     renotify: true,
-    silent: false,                                   // app closed: the phone's own notification sound
+    silent: false,                                   // always the phone's own notification sound
     vibrate: serious ? [400, 150, 400, 150, 400, 150, 400] : [200, 80, 200],
     requireInteraction: serious,                     // a serious alert stays until it is seen
     icon: new URL('icon-192.png', self.registration.scope).href,
@@ -113,12 +113,10 @@ self.addEventListener('push', (event) => {
   }
   event.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-    // App on screen: show the notification WITHOUT the phone's sound; the app plays
-    // its own (src/lib/sound.ts). Web apps cannot set a custom sound for the phone's
-    // own notifications, so when the app is closed the phone's default sound is used.
-    // "focused", not just "visible": iPhone can report a backgrounded home-screen
-    // app as visible, which made real background notifications silent.
-    if (wins.some((w) => w.focused && w.visibilityState === 'visible')) { options.silent = true; delete options.vibrate }
+    // The phone's own sound ALWAYS plays (app open or closed). Muting it while the
+    // app is open was tried, but iPhone only lets a web app play sound right after
+    // a tap, so an open-but-untouched app ended up completely silent. The app's own
+    // chime (src/lib/sound.ts) is an extra on top, when the phone allows it.
     await self.registration.showNotification(title, options)
     // Tell any open app window, so it refreshes the bell and plays its sound now.
     for (const w of wins) w.postMessage({ type: 'issue-desk-push', serious })

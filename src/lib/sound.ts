@@ -2,9 +2,9 @@
 // WHAT THIS FILE IS
 //   The app's own notification sound: a loud service-bell "ding-dong-ding" for
 //   a new issue, and a siren + bells for a SERIOUS one. Plus the On/Off choice.
-//   While the app is on screen the phone's own sound is muted (public/sw.js),
-//   so only this plays. When the app is closed the phone uses its default
-//   sound: web apps are not allowed to set a custom sound for that.
+//   This is an EXTRA on top of the phone's own notification sound (which always
+//   plays, public/sw.js): iPhone only lets a web app make sound shortly after a
+//   tap, so this cannot be the only alert. Web apps cannot change the phone's sound.
 // WHY IT EXISTS
 //   When the app is open, the phone often does not sound for a push, so the
 //   app plays its own sound. The sounds are generated with the Web Audio API
