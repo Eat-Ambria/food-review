@@ -79,6 +79,8 @@ html, body { overflow-x: hidden; }
 /* The browser's own pull-to-refresh is off; components/PullToRefresh.tsx does it
    (and works in the installed app too). */
 html, body { overscroll-behavior-y: contain; }
+/* Only scrolling gestures: no pinch-zoom, no double-tap zoom (see lib/noZoom.ts). */
+html, body { touch-action: pan-x pan-y; }
 #root { overflow-x: clip; }
 
 /* iPhone zooms the page in when you tap a field whose text is under 16px, and

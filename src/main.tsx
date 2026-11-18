@@ -7,6 +7,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
+import './lib/noZoom'   // no pinch / double-tap zoom on phones
 import App from './App'
 import { registerServiceWorker } from './lib/push'
 
