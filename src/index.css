@@ -80,7 +80,9 @@ html, body, #root { height: 100%; }
 html, body { overflow-x: clip; }
 /* The browser's own pull-to-refresh is off; components/PullToRefresh.tsx does it
    (and works in the installed app too). */
-html, body { overscroll-behavior-y: contain; }
+/* "none" also stops the iPhone rubber-band bounce, which pulled the whole page
+   (top bar included) down and showed an empty strip above it. */
+html, body { overscroll-behavior-y: none; }
 /* Only scrolling gestures: no pinch-zoom, no double-tap zoom (see lib/noZoom.ts). */
 html, body { touch-action: pan-x pan-y; }
 #root { overflow-x: clip; }
