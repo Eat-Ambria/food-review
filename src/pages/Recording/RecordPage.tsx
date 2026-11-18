@@ -1,0 +1,656 @@
+// =============================================================================
+// WHAT THIS FILE IS
+//   The Record screen: record a complaint (max 2 minutes), listen to it, get
+//   the transcript from Sarvam straight away, and correct it.
+// WHY IT EXISTS
+//   It is the main screen for Recording Users, so it is built for one-handed
+//   phone use: one large button, a big timer, a live waveform so the user can
+//   see the mic is hearing them, and a 15-second warning before the limit.
+//
+//   Flow:  record → stop → (saved on device) → transcribing… → editable text
+//
+//   • Transcription starts the moment recording stops, not at Submit.
+//   • The recording and every transcription result are saved on the device
+//     (services/draftStore.ts). A refresh, a closed app or a lost connection
+//     never loses them, and Retry only redoes what is missing.
+//   • Spend protection: if the user hits an anti-spam limit (a new recording
+//     less than 20 s after the previous one, or too many in 15 min), the recording stays
+//     saved and the screen shows the time it will be transcribed; it then runs
+//     automatically. "Record again" is disabled while transcription is running,
+//     so half-paid work isn't thrown away.
+//   • Event: once the transcript is ready (and again after edits), the server
+//     works out which Calendar booking it is about. The card only DISPLAYS the
+//     result; nobody picks an event by hand (services/eventCalendarService.ts).
+//   • Submit uploads the audio and sends the reviewed transcript to
+//     process-issue (services/submitService.ts). The device draft is deleted
+//     only after the server confirms it saved the submission; until then a
+//     failed submit can simply be retried, and it never creates a duplicate.
+//   • Sarvam's text is kept unchanged as the "original". The user's edits are
+//     saved separately, and "Undo my changes" brings the original back. Nothing
+//     edits the user's text behind their back.
+// USED BY
+//   App.tsx route "/record"
+// DEPENDS ON
+//   hooks/useRecorder.ts, services/draftStore.ts, services/sarvamService.ts,
+//   components/AudioPlayer.tsx
+// =============================================================================
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useAuth } from '../../contexts/AuthContext'
+import { RECORDER_ERROR_TEXT, useRecorder, type Recording } from '../../hooks/useRecorder'
+import { deleteDraft, loadDraft, saveDraft, updateDraft } from '../../services/draftStore'
+import { TranscriptionError, transcribe, type TranscriptionState } from '../../services/sarvamService'
+import { matchEvent } from '../../services/eventCalendarService'
+import { EventMatchCard } from '../../components/EventMatchCard'
+import type { EventMatch } from '../../types/events'
+import { DuplicateError, submitRecording, type DuplicateInfo, type SubmitResult } from '../../services/submitService'
+
+// If reading the issues fails (e.g. the AI is busy), try again from this screen
+// every 10 s, up to 6 times (~1 minute), so nobody waits for the 5-minute job
+// or records the same complaint again. Re-sending is safe: same recording id.
+const AUTO_RETRY_EVERY_MS = 10_000
+const AUTO_RETRY_MAX = 6
+import { AudioPlayer } from '../../components/AudioPlayer'
+import { fmtTime } from '../../utils/format'
+import { Button } from '../../components/ui/Button'
+import { Badge } from '../../components/ui/Badge'
+import { Modal } from '../../components/ui/Modal'
+import { Icon } from '../../components/Icon'
+import { Alert, Card, PageHeader, Skeleton } from '../../components/ui/Layout'
+import { Spinner } from '../../components/ui/Spinner'
+import { CategoryChip } from '../../components/CategoryChip'
+import { ItemTag } from '../../components/ItemTag'
+import { IssuesByItem } from '../../components/IssuesByItem'
+
+const MAX_SECONDS = 120
+const WARN_AT = MAX_SECONDS - 15
+const BARS = 40
+
+type TxPhase = 'none' | 'running' | 'ready' | 'failed'
+interface TxStatus { phase: TxPhase; done: number; total: number; error?: string; retryable?: boolean; retryAt?: string | null }
+
+// Idle waveform: three soft humps (tallest in the middle), dots at the edges.
+const idleAmp = (i: number) => {
+  const x = i / (BARS - 1)
+  const hump = (c: number, h: number, w: number) => h * Math.exp(-((x - c) ** 2) / (2 * w * w))
+  return 0.14 + Math.max(hump(0.18, 0.55, 0.05), hump(0.5, 1, 0.045), hump(0.8, 0.6, 0.05), 0.18 * Math.sin(Math.PI * x))
+}
+
+const clock = (iso: string) => new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
+
+export function RecordPage() {
+  const { user } = useAuth()
+  // Effects depend on the id only, so a profile refresh doesn't re-run them.
+  const userId = user?.id
+  const rec = useRecorder(MAX_SECONDS)
+  const [bars, setBars] = useState<number[]>(() => Array(BARS).fill(0))
+  const [saved, setSaved] = useState<'no' | 'yes' | 'failed'>('no')
+  const [recoveredAt, setRecoveredAt] = useState<string | null>(null)
+  const [confirmDiscard, setConfirmDiscard] = useState(false)
+
+  const [tx, setTx] = useState<TxStatus>({ phase: 'none', done: 0, total: 0 })
+  const [rawText, setRawText] = useState<string | null>(null)   // Sarvam's original
+  const [text, setText] = useState('')                          // what the user edits
+  const [match, setMatch] = useState<EventMatch | null>(null)   // which Calendar booking (from the server)
+  const [matchLoading, setMatchLoading] = useState(false)
+  const [matchError, setMatchError] = useState<string | null>(null)
+  const matchedTextRef = useRef<string | null>(null)            // last text that was matched
+  const [chosenEventId, setChosenEventId] = useState<string | null>(null)   // recorder's pick when uncertain
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitted, setSubmitted] = useState<SubmitResult | null>(null)
+  const [duplicate, setDuplicate] = useState<DuplicateInfo | null>(null)
+  const [autoRetries, setAutoRetries] = useState(0)
+  // Kept after the device draft is deleted, so the screen can keep retrying.
+  const sentRef = useRef<Parameters<typeof submitRecording>[0] | null>(null)
+  const partialRef = useRef<TranscriptionState | null>(null)
+  const runIdRef = useRef(0)                                     // ignores results of a discarded recording
+  const clientIdRef = useRef<string | null>(null)               // this recording's client_submission_id
+
+  // Transcript box: height follows the text (3 lines minimum, max-h in CSS).
+  const transcriptRef = useRef<HTMLTextAreaElement>(null)
+  useLayoutEffect(() => {
+    const el = transcriptRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight + 2}px`
+  }, [text, tx.phase])
+
+  const levelRef = useRef(0)
+  levelRef.current = rec.level
+
+  // ---- Transcription --------------------------------------------------------
+  const runTranscription = useCallback(async (blob: Blob) => {
+    if (!userId) return
+    if (!clientIdRef.current) clientIdRef.current = crypto.randomUUID()
+    const clientId = clientIdRef.current
+    const runId = ++runIdRef.current
+    if (!navigator.onLine) {
+      setTx({ phase: 'failed', done: 0, total: 0, retryable: true,
+        error: 'You are offline. Your recording is saved; it will be transcribed when you are back online.' })
+      return
+    }
+    setTx({ phase: 'running', done: 0, total: 0 })
+    try {
+      const res = await transcribe(blob, clientId, (done, total) => {
+        if (runId === runIdRef.current) setTx({ phase: 'running', done, total })
+      }, partialRef.current)
+      if (runId !== runIdRef.current) return
+      partialRef.current = null
+      setRawText(res.text)
+      setText(res.text)
+      setTx({ phase: 'ready', done: res.state.total, total: res.state.total })
+      await updateDraft(userId, {
+        rawTranscript: res.text, editedTranscript: res.text,
+        transcriptionState: undefined, transcriptionMeta: res.meta,
+      })
+    } catch (e) {
+      if (runId !== runIdRef.current) return
+      const err = e instanceof TranscriptionError ? e : new TranscriptionError('Transcription failed. Please retry.', true, null)
+      partialRef.current = err.partial
+      if (err.partial) await updateDraft(userId, { transcriptionState: err.partial })
+      setTx({ phase: 'failed', done: err.partial ? err.partial.results.filter(Boolean).length : 0,
+        total: err.partial?.total ?? 0, error: err.message, retryable: err.retryable, retryAt: err.retryAt })
+    }
+  }, [userId])
+
+  // ---- Restore an unsent recording left on this device ---------------------
+  const { restore } = rec
+  useEffect(() => {
+    if (!userId) return
+    let cancelled = false
+    void loadDraft(userId).then((d) => {
+      if (cancelled || !d) return
+      restore({ blob: d.blob, mimeType: d.mimeType, durationSec: d.durationSec })
+      clientIdRef.current = d.clientSubmissionId
+      setRecoveredAt(d.createdAt)
+      setSaved('yes')
+      if (d.rawTranscript !== undefined) {
+        setRawText(d.rawTranscript)
+        if (d.eventMatch) { setMatch(d.eventMatch); matchedTextRef.current = d.editedTranscript ?? d.rawTranscript }
+        setText(d.editedTranscript ?? d.rawTranscript)
+        setTx({ phase: 'ready', done: 1, total: 1 })
+      } else {
+        partialRef.current = d.transcriptionState ?? null
+        void runTranscription(d.blob)
+      }
+    })
+    return () => { cancelled = true }
+  }, [userId, restore, runTranscription])
+
+  // ---- New recording: save on device, then transcribe immediately ----------
+  const lastHandledRef = useRef<Recording | null>(null)
+  useEffect(() => {
+    const r = rec.recording
+    if (!userId || !r || r === lastHandledRef.current || recoveredAt) return
+    lastHandledRef.current = r
+    partialRef.current = null
+    clientIdRef.current = crypto.randomUUID()
+    setRawText(null)
+    setText('')
+    setMatch(null)
+    setMatchError(null)
+    matchedTextRef.current = null
+    void saveDraft({
+      userId,
+      clientSubmissionId: clientIdRef.current,
+      blob: r.blob,
+      mimeType: r.mimeType,
+      durationSec: r.durationSec,
+      createdAt: new Date().toISOString(),
+    }).then((ok) => {
+      setSaved(ok ? 'yes' : 'failed')
+      void runTranscription(r.blob)
+    })
+  }, [userId, rec.recording, recoveredAt, runTranscription])
+
+  // ---- Limit reached → transcribe automatically once the limit resets --------
+  useEffect(() => {
+    if (tx.phase !== 'failed' || !tx.retryAt || !rec.recording) return
+    const blob = rec.recording.blob
+    const ms = Math.max(1000, new Date(tx.retryAt).getTime() - Date.now() + 2000)
+    // setTimeout can't wait longer than ~24.8 days; the daily limit resets within a day anyway.
+    const id = setTimeout(() => void runTranscription(blob), Math.min(ms, 2 ** 31 - 1))
+    return () => clearTimeout(id)
+  }, [tx.phase, tx.retryAt, rec.recording, runTranscription])
+
+  // ---- Back online after a failure → retry automatically --------------------
+  useEffect(() => {
+    if (tx.phase !== 'failed' || !tx.retryable || tx.retryAt || !rec.recording) return
+    const blob = rec.recording.blob
+    const onOnline = () => void runTranscription(blob)
+    window.addEventListener('online', onOnline)
+    return () => window.removeEventListener('online', onOnline)
+  }, [tx.phase, tx.retryable, tx.retryAt, rec.recording, runTranscription])
+
+  // ---- Identify the event from the transcript (debounced; re-runs after edits) ---
+  useEffect(() => {
+    if (!userId || tx.phase !== 'ready' || !text.trim() || text === matchedTextRef.current) return
+    let cancelled = false
+    const id = setTimeout(async () => {
+      setMatchLoading(true)
+      setMatchError(null)
+      try {
+        const m = await matchEvent(text)
+        if (cancelled) return
+        matchedTextRef.current = text
+        setMatch(m)
+        // A new match may list different functions: keep the pick only if it is still offered.
+        setChosenEventId((prev) => (prev === 'none' || m.candidates?.some((c) => c.calendar_event_id === prev)) ? prev : null)
+        await updateDraft(userId, { eventMatch: m })
+      } catch (e) {
+        if (!cancelled) setMatchError((e as Error).message)
+      } finally {
+        if (!cancelled) setMatchLoading(false)
+      }
+    }, 1200)
+    return () => { cancelled = true; clearTimeout(id); setMatchLoading(false) }
+  }, [userId, text, tx.phase])
+
+  // ---- Save edits on the device (debounced) ---------------------------------
+  useEffect(() => {
+    if (!userId || tx.phase !== 'ready') return
+    const id = setTimeout(() => void updateDraft(userId, { editedTranscript: text }), 500)
+    return () => clearTimeout(id)
+  }, [userId, text, tx.phase])
+
+  // ---- Waveform: sample the level ~12 times a second -----------------------
+  useEffect(() => {
+    if (rec.status !== 'recording') return
+    setBars(Array(BARS).fill(0))
+    const id = setInterval(() => setBars((b) => [...b.slice(1), levelRef.current]), 80)
+    return () => clearInterval(id)
+  }, [rec.status])
+
+  const startRecording = useCallback(() => {
+    setRecoveredAt(null)
+    setSaved('no')
+    setTx({ phase: 'none', done: 0, total: 0 })
+    void rec.start()
+  }, [rec])
+
+  // ---- Submit ------------------------------------------------------------------
+  const doSubmit = async (allowDuplicate = false) => {
+    const r = rec.recording
+    if (!userId || !r || !clientIdRef.current || !text.trim() || submitting) return
+    setSubmitting(true)
+    setSubmitError(null)
+    setDuplicate(null)
+    try {
+      await updateDraft(userId, { editedTranscript: text })      // make sure the latest edit is saved first
+      const d = await loadDraft(userId)
+      const input = {
+        userId,
+        clientSubmissionId: clientIdRef.current,
+        blob: r.blob,
+        mimeType: r.mimeType,
+        durationSec: r.durationSec,
+        reviewedTranscript: text.trim(),
+        rawTranscript: rawText,
+        transcriptionMeta: d?.transcriptionMeta,
+        allowDuplicate,
+        chosenCalendarEventId: match?.status === 'ambiguous' ? chosenEventId : null,
+      }
+      const result = await submitRecording(input)
+      // The server has it now; the device copy is no longer needed.
+      sentRef.current = input
+      await deleteDraft(userId)
+      setAutoRetries(0)
+      setSubmitted(result)
+    } catch (e) {
+      if (e instanceof DuplicateError) setDuplicate(e.info)
+      else setSubmitError((e as Error).message)
+    }
+    setSubmitting(false)
+  }
+
+  // ---- Reading failed but will retry → retry from here, quickly ----------------
+  useEffect(() => {
+    if (!submitted || submitted.status !== 'failed' || !submitted.will_retry || autoRetries >= AUTO_RETRY_MAX || !sentRef.current) return
+    let cancelled = false
+    const id = setTimeout(async () => {
+      try {
+        const again = await submitRecording(sentRef.current!)     // same recording id → never a duplicate
+        if (!cancelled) setSubmitted(again)
+      } catch { /* network: the next tick or the 5-minute job will try again */ }
+      if (!cancelled) setAutoRetries((n) => n + 1)
+    }, AUTO_RETRY_EVERY_MS)
+    return () => { cancelled = true; clearTimeout(id) }
+  }, [submitted, autoRetries])
+
+  const discard = async () => {
+    runIdRef.current++                // any transcription still running is ignored
+    if (userId) await deleteDraft(userId)
+    setSubmitted(null)
+    setSubmitError(null)
+    setDuplicate(null)
+    setAutoRetries(0)
+    setChosenEventId(null)
+    sentRef.current = null
+    lastHandledRef.current = null
+    partialRef.current = null
+    clientIdRef.current = null
+    setRecoveredAt(null)
+    setSaved('no')
+    setConfirmDiscard(false)
+    setTx({ phase: 'none', done: 0, total: 0 })
+    setRawText(null)
+    setText('')
+    setMatch(null)
+    setMatchError(null)
+    matchedTextRef.current = null
+    rec.discard()
+  }
+
+  const recording = rec.status === 'recording'
+  const remaining = MAX_SECONDS - rec.elapsed
+  const progress = Math.min(rec.elapsed / MAX_SECONDS, 1)
+  const edited = rawText !== null && text !== rawText
+
+  // ---- After a successful submit ---------------------------------------------------
+  if (submitted) {
+    const n = submitted.issues.length
+    const headline = submitted.status === 'pending_assignment' || submitted.status === 'assigned'
+      ? `Submitted. ${n} issue${n === 1 ? '' : 's'} found.`
+      : submitted.status === 'needs_review'
+        ? 'Submitted. No clear issue was found, so an admin will review it.'
+        : submitted.status === 'failed'
+          ? (submitted.will_retry
+              ? (autoRetries < AUTO_RETRY_MAX
+                  ? 'Saved. Reading the issues… trying again.'
+                  : 'Saved. The issues will be read automatically in a few minutes.')
+              : 'Submitted and saved, but reading the issues failed. An admin will check it.')
+          : 'Submitted. It is being processed.'
+    const retrying = submitted.status === 'failed' && submitted.will_retry
+    const good = submitted.status === 'pending_assignment' || submitted.status === 'assigned'
+    return (
+      <div className="mx-auto max-w-2xl">
+        <Card className="overflow-hidden">
+          <div className="px-5 pb-5 pt-6 md:px-6">
+            <span className={`flex size-11 items-center justify-center rounded-full ${good ? 'bg-ok-soft text-ok' : retrying ? 'bg-warn-soft text-warn' : 'bg-ok-soft text-ok'}`}>
+              {retrying && autoRetries < AUTO_RETRY_MAX ? <Spinner className="size-5" /> : <Icon name="check" className="size-6" strokeWidth={2.4} />}
+            </span>
+            <h1 className="mt-4 font-serif text-[1.9rem] font-normal leading-tight tracking-[-0.02em] md:text-[2.3rem]">{headline}</h1>
+            {submitted.already_submitted && <p className="mt-1 text-sm text-muted">This recording had already been submitted. Nothing was duplicated.</p>}
+            {retrying && (
+              <Alert tone="warn" className="mt-4">Your complaint is safely saved. Please don&rsquo;t record it again.</Alert>
+            )}
+            {submitted.status === 'failed' && submitted.error && <p className="mt-2 text-xs text-muted">Reason: {submitted.error}</p>}
+          </div>
+
+          {n > 0 && (
+            // Grouped by dish / thing: each item once, its problems under it.
+            <IssuesByItem className="border-t border-line px-5 py-5 md:px-6"
+              issues={submitted.issues} itemOf={(it) => it.item} categoryOf={(it) => it.category_raw}
+              renderIssue={(it) => (
+                <div>
+                  <CategoryChip name={it.category_raw ?? 'Other'} />
+                  <p className="mt-1.5 text-sm leading-relaxed">{it.ai_summary ?? it.description}</p>
+                  {/* Each issue's own venue + event: one recording can cover several venues. */}
+                  <p className="mt-1 flex items-start gap-1.5 text-xs text-muted">
+                    <Icon name="pin" className="mt-px size-3.5 shrink-0" />
+                    {[it.venue?.venue_name,
+                      [it.event_info?.guest_name, it.event_info?.function_name].filter(Boolean).join(' · ') || null,
+                      it.event_info?.shift, it.location].filter(Boolean).join(' · ') || 'Venue not identified'}
+                  </p>
+                </div>
+              )} />
+          )}
+
+          {/* What was actually said: the submitted transcript, unchanged, plus the recording. */}
+          <div className="border-t border-line bg-subtle px-5 py-5 md:px-6">
+            <p className="text-sm font-bold">What you said</p>
+            {rec.recording && <div className="mt-3"><AudioPlayer blob={rec.recording.blob} durationSec={rec.recording.durationSec} /></div>}
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-ink/85">{text}</p>
+          </div>
+        </Card>
+
+        <p className="mt-4 text-center text-xs text-muted">All POCs can now see these issues. Follow them under My submissions.</p>
+        <Button size="lg" className="mt-4 w-full" onClick={() => void discard()}><Icon name="mic" />Record another issue</Button>
+      </div>
+    )
+  }
+
+  const warn = recording && rec.elapsed >= WARN_AT
+  const R = 54                                   // progress ring radius (viewBox 120)
+  const C = 2 * Math.PI * R
+
+  return (
+    <div className="mx-auto max-w-[52rem]">
+      <PageHeader align="center" title="Record an issue"
+        description={<>Say the venue, the guest or function, and then each problem. The date is taken as <b className="font-bold text-ink">today</b> unless you say another day (e.g. &ldquo;kal&rdquo;). Hindi, English or both are fine.</>} />
+
+      {/* ---------------------------- Recorder ---------------------------- */}
+      {rec.status !== 'stopped' && (
+        <section className={`relative isolate mx-auto flex max-w-[51rem] flex-col items-center overflow-hidden rounded-[2rem] border border-white/90 bg-white/80 px-5 pb-11 pt-9 backdrop-blur-sm transition-shadow duration-300
+          ${recording ? 'shadow-[0_30px_60px_-28px_rgb(192_60_11/0.45)]' : 'shadow-float'}`}>
+          {/* Soft light behind the button: gold when idle, a warm red wash while
+              recording that brightens with the voice. */}
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 transition-opacity duration-500"
+            style={{
+              opacity: recording ? 0.55 + Math.min(rec.level, 1) * 0.45 : 1,
+              background: recording
+                ? 'radial-gradient(circle at 50% 74%, rgb(192 60 11 / 0.14), transparent 45%)'
+                : 'radial-gradient(circle at 50% 74%, rgb(224 162 37 / 0.14), transparent 40%)',
+            }} />
+
+          {/* Status: tells at a glance whether the mic is live. */}
+          <span className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors
+            ${recording ? 'bg-danger-soft text-danger' : rec.status === 'requesting' ? 'bg-accent-soft text-accent' : 'bg-ink/[0.05] text-ink'}`}>
+            <span className={`size-2 rounded-full ${recording ? 'rec-dot bg-danger' : rec.status === 'requesting' ? 'bg-marigold' : 'bg-[#22a35a]'}`} />
+            {recording ? 'Recording' : rec.status === 'requesting' ? 'Starting mic' : 'Ready'}
+          </span>
+
+          <p className={`mt-4 text-5xl font-bold leading-none tabular-nums tracking-tight transition-colors md:text-[3.5rem] ${warn ? 'text-danger' : 'text-ink'}`}>
+            {fmtTime(rec.elapsed)}
+          </p>
+          <p className="mt-2 text-[15px] text-ink/60">{recording ? `${fmtTime(remaining)} left` : 'Up to 2:00'}</p>
+
+          {/* Waveform. Idle: three soft humps that sway gently. Recording: the real
+              voice level, newest bar on the right, older bars fading out. */}
+          <div className="mt-7 flex h-14 w-full max-w-md items-center justify-between px-1" aria-hidden="true">
+            {bars.map((v, i) => recording ? (
+              <span key={i}
+                className={`h-full w-[3px] rounded-full transition-transform duration-100 ease-out ${warn ? 'bg-danger' : 'bg-ink'}`}
+                style={{ transform: `scaleY(${Math.max(0.08, Math.min(1, v * 1.15))})`, opacity: 0.25 + 0.75 * (i / (BARS - 1)) }} />
+            ) : (
+              <span key={i} className="wave-idle h-full w-[3px] rounded-full bg-ink/35"
+                style={{ '--amp': idleAmp(i), animationDelay: `${-i * 60}ms` } as React.CSSProperties} />
+            ))}
+          </div>
+
+          {/* The button. Idle: a gold ring with a thin cream gap (like a jewellery
+              setting) and a breathing golden halo. Recording: a progress ring fills
+              (marigold, red in the last 15 s) and one soft pulse shows the mic is live. */}
+          <div className="relative mt-10 flex size-40 items-center justify-center">
+            {!recording && (
+              <>
+                <span aria-hidden="true" className="gold-breathe pointer-events-none absolute inset-3 rounded-full bg-marigold/35" />
+                <span aria-hidden="true" className="pointer-events-none absolute inset-[11px] rounded-full bg-[conic-gradient(from_210deg,#f6e3ae,#e0a225,#f3d27f,#c98f1c,#f6e3ae)] shadow-[0_0_44px_4px_rgb(224_162_37/0.3)]" />
+                <span aria-hidden="true" className="pointer-events-none absolute inset-[15px] rounded-full bg-[#fbf6ea]" />
+              </>
+            )}
+            {recording && (
+              <>
+                <span aria-hidden="true" className="rec-pulse pointer-events-none absolute inset-5 rounded-full bg-danger/25" />
+                <svg className="pointer-events-none absolute inset-0 -rotate-90" viewBox="0 0 120 120" aria-hidden="true">
+                  <circle cx="60" cy="60" r={R} fill="none" stroke="var(--color-line)" strokeWidth="3" />
+                  <circle cx="60" cy="60" r={R} fill="none" stroke={warn ? 'var(--color-danger)' : 'var(--color-marigold)'}
+                    strokeWidth="3" strokeLinecap="round" strokeDasharray={`${progress * C} ${C}`}
+                    className="transition-[stroke-dasharray] duration-300 ease-linear" />
+                </svg>
+              </>
+            )}
+            <button type="button"
+              onClick={recording ? rec.stop : startRecording}
+              disabled={rec.status === 'requesting'}
+              aria-label={recording ? 'Stop recording' : 'Start recording'}
+              className={`group relative flex size-[7.25rem] items-center justify-center overflow-hidden rounded-full text-white transition-[box-shadow,transform] duration-300 hover:scale-[1.04] active:scale-95 disabled:opacity-60 motion-reduce:transform-none
+                focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-marigold/50
+                ${recording
+                  ? 'bg-[radial-gradient(circle_at_35%_25%,#e2683a,var(--color-danger)_60%)] shadow-[0_12px_30px_-10px_rgb(192_60_11/0.7)]'
+                  : 'bg-[radial-gradient(circle_at_35%_25%,#36435e,#1b2539_55%,#141c2c)] shadow-[inset_0_-6px_14px_rgb(0_0_0/0.25),0_10px_24px_-10px_rgb(23_32_51/0.6)]'}`}>
+              <span aria-hidden="true" className="pointer-events-none absolute inset-x-6 top-2 h-8 rounded-full bg-white/10 blur-[1px]" />
+              {rec.status === 'requesting'
+                ? <Spinner className="size-7" />
+                : <span key={recording ? 'stop' : 'mic'} className="icon-pop relative">
+                    <Icon name={recording ? 'stop' : 'mic'} className="size-11" strokeWidth={recording ? 0 : 1.8} fill={recording ? 'currentColor' : 'none'} />
+                  </span>}
+            </button>
+          </div>
+
+          <p className={`mt-7 text-base md:text-[17px] ${warn ? 'font-medium text-danger' : 'text-ink/80'}`} role="status">
+            {rec.status === 'requesting' && 'Allow microphone access…'}
+            {rec.status === 'idle' && 'Tap to start recording'}
+            {recording && (warn ? 'Less than 15 seconds left' : 'Recording… tap to stop')}
+          </p>
+
+          {rec.error && <Alert tone="danger" className="mt-6 w-full max-w-sm">{RECORDER_ERROR_TEXT[rec.error]}</Alert>}
+        </section>
+      )}
+
+      {/* --------------------------- After stop --------------------------- */}
+      {rec.status === 'stopped' && rec.recording && (
+        <section className="mx-auto max-w-2xl space-y-4">
+          {recoveredAt && (
+            <Alert tone="info" icon="refresh">
+              Recovered your unsent recording from {new Date(recoveredAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}.
+            </Alert>
+          )}
+          {rec.recording.durationSec >= MAX_SECONDS - 0.5 && (
+            <Alert tone="warn" icon="clock">The 2-minute limit was reached, so recording stopped automatically.</Alert>
+          )}
+
+          <Card className="p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-sm font-bold">Your recording</p>
+              <p className="flex items-center gap-1.5 text-xs text-muted">
+                {saved === 'yes' && <><Icon name="checkCircle" className="size-3.5 text-ok" />Saved on this device</>}
+                {saved === 'failed' && <><Icon name="alert" className="size-3.5 text-warn" />Not backed up</>}
+              </p>
+            </div>
+            <AudioPlayer blob={rec.recording.blob} durationSec={rec.recording.durationSec} />
+            {saved === 'failed' && (
+              <p className="mt-3 text-xs leading-relaxed text-warn">Could not save a backup on this device (private browsing?). Don&rsquo;t close the app until it is submitted.</p>
+            )}
+          </Card>
+
+          {/* Transcribing */}
+          {tx.phase === 'running' && (
+            <Card className="p-5">
+              <div role="status" className="flex items-center gap-3">
+                <Spinner className="size-4 text-ink" />
+                <p className="text-sm font-semibold">Transcribing{tx.total > 1 ? ` part ${Math.min(tx.done + 1, tx.total)} of ${tx.total}` : ''}…</p>
+              </div>
+              <div className="mt-4 h-1 overflow-hidden rounded-full bg-line">
+                <div className="h-full rounded-full bg-marigold transition-[width] duration-500"
+                  style={{ width: `${tx.total ? Math.max(8, (tx.done / tx.total) * 100) : 8}%` }} />
+              </div>
+              <div className="mt-5 space-y-2" aria-hidden="true">
+                <Skeleton className="h-3.5 w-full" /><Skeleton className="h-3.5 w-11/12" /><Skeleton className="h-3.5 w-3/5" />
+              </div>
+            </Card>
+          )}
+
+          {/* Limit reached: waits and runs by itself */}
+          {tx.phase === 'failed' && tx.retryAt && (
+            <Alert tone="warn" icon="lock" title={tx.error}>
+              {new Date(tx.retryAt).getTime() - Date.now() < 120_000
+                ? <>Your recording is saved. It will be transcribed automatically in a few seconds.</>
+                : <>Your recording is saved. It will be transcribed automatically at <b>{clock(tx.retryAt)}</b>. Keep this page open, or come back after that time.</>}
+            </Alert>
+          )}
+
+          {/* Failed */}
+          {tx.phase === 'failed' && !tx.retryAt && (
+            <Alert tone="danger" title={tx.error}
+              action={tx.retryable ? (
+                <Button size="sm" variant="secondary" onClick={() => void runTranscription(rec.recording!.blob)}>
+                  <Icon name="refresh" />Retry
+                </Button>
+              ) : undefined}>
+              {tx.total > 0 && tx.done > 0 ? <>{tx.done} of {tx.total} parts are done and won&rsquo;t be sent again.</> : null}
+            </Alert>
+          )}
+
+          {/* Ready: editable transcript */}
+          {tx.phase === 'ready' && (
+            <Card className="p-4">
+              <div className="flex items-center justify-between gap-2">
+                <label htmlFor="transcript" className="text-sm font-bold">Transcript</label>
+                {edited && (
+                  <span className="flex items-center gap-2">
+                    <Badge tone="accent">Edited</Badge>
+                    <button type="button" onClick={() => setText(rawText ?? '')} className="text-xs font-semibold text-muted underline-offset-2 hover:text-ink hover:underline">
+                      Undo my changes
+                    </button>
+                  </span>
+                )}
+              </div>
+              <p className="mt-0.5 text-xs text-muted">Check names, venue and dates. Correct anything that was heard wrong.</p>
+              {/* Starts at 3 lines and grows with the text (up to ~10 lines, then scrolls). */}
+              <textarea id="transcript" ref={transcriptRef} value={text} onChange={(e) => setText(e.target.value)}
+                rows={3} maxLength={5000} spellCheck={false}
+                className="mt-3 max-h-64 min-h-22 w-full resize-none overflow-y-auto rounded-lg border border-line bg-surface px-3.5 py-3 text-[15px] leading-relaxed outline-none transition-[border-color,box-shadow] hover:border-line-strong focus:border-ink/60 focus:ring-[3px] focus:ring-marigold/20" />
+              <p className={`mt-1 text-right text-xs tabular-nums ${text.length > 4800 ? 'text-warn' : 'text-faint'}`}>{text.length} / 5000</p>
+            </Card>
+          )}
+
+          {tx.phase === 'ready' && <EventMatchCard match={match} loading={matchLoading} error={matchError} chosenId={chosenEventId} onChoose={setChosenEventId} />}
+
+          {submitError && <Alert tone="danger">{submitError}</Alert>}
+
+          {/* Actions: sticky above the tab bar on phones, so Submit is always in reach. */}
+          <div className="sticky bottom-[calc(3.85rem+env(safe-area-inset-bottom))] z-10 -mx-4 border-t border-line bg-canvas/95 px-4 py-3 backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
+            <div className="flex gap-2">
+              <Button variant="secondary" size="lg" className="flex-1" onClick={() => setConfirmDiscard(true)}
+                disabled={tx.phase === 'running' || submitting} title={tx.phase === 'running' ? 'Wait for the transcript first' : undefined}>
+                <Icon name="refresh" />Record again
+              </Button>
+              <Button size="lg" className="flex-[1.4]" loading={submitting} disabled={tx.phase !== 'ready' || !text.trim()}
+                onClick={() => void doSubmit(false)}>
+                {submitting ? 'Submitting…' : 'Submit'}
+              </Button>
+            </div>
+            {submitting && <p className="mt-2 text-center text-xs text-muted">Uploading and reading the issues… this can take a few seconds.</p>}
+          </div>
+        </section>
+      )}
+
+      {/* Same complaint sent recently? Let the user decide. */}
+      <Modal open={Boolean(duplicate)} title="Already sent?" onClose={() => setDuplicate(null)}
+        footer={<>
+          <Button variant="secondary" onClick={() => void discard()}>Don&rsquo;t send</Button>
+          <Button loading={submitting} onClick={() => void doSubmit(true)}>Send anyway</Button>
+        </>}>
+        {duplicate && (
+          <div className="space-y-3 text-sm leading-relaxed">
+            <p>
+              You sent an almost identical complaint at{' '}
+              <b>{new Date(duplicate.created_at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</b>.
+              Sending it again would create the same issues twice.
+            </p>
+            {duplicate.issues.length > 0 && (
+              <ul className="divide-y divide-line rounded-lg border border-line">
+                {duplicate.issues.map((i, k) => (
+                  <li key={k} className="px-3 py-2.5">
+                    <span className="flex flex-wrap items-center gap-1.5"><span className="font-semibold">{i.category_raw ?? 'Other'}</span><ItemTag item={i.item} category={i.category_raw} size="sm" /></span>
+                    <span className="mt-0.5 block text-muted">{i.ai_summary}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="text-xs text-muted">Choose <b className="text-ink">Send anyway</b> only if this is a new, separate problem.</p>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={confirmDiscard} title="Record again?" onClose={() => setConfirmDiscard(false)}
+        footer={<>
+          <Button variant="secondary" onClick={() => setConfirmDiscard(false)}>Keep it</Button>
+          <Button variant="danger" onClick={() => void discard()}><Icon name="trash" />Delete and re-record</Button>
+        </>}>
+        <p className="text-sm leading-relaxed text-muted">The current recording and its transcript will be deleted from this device.</p>
+      </Modal>
+    </div>
+  )
+}

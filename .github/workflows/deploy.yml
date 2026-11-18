@@ -1,0 +1,54 @@
+# =============================================================================
+# WHAT THIS FILE IS
+#   GitHub Actions workflow: builds the app and publishes it to GitHub Pages.
+# WHY IT EXISTS
+#   Every push to main (or the "Run workflow" button) installs, runs the unit
+#   tests, builds with the repo's path (/food-review/) and deploys dist/.
+#   A failing test stops the deploy. The three VITE_ values are browser-safe
+#   public keys kept as repository secrets; private keys live only in Supabase.
+# =============================================================================
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run
+      - run: npm run build
+        env:
+          VITE_BASE: /food-review/          # must match the repository name
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

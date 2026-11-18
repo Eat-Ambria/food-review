@@ -1,0 +1,26 @@
+-- =============================================================================
+-- WHAT THIS FILE IS
+--   Migration 17: remember which function the RECORDER picked when the app
+--   could not tell on its own.
+--
+-- WHY IT EXISTS
+--   Normally the event is identified from what was said. When it is not certain
+--   (e.g. a date was said but no venue, and several functions ran that day), the
+--   Record page lists that day's Calendar bookings and the recorder picks one,
+--   or "none of these".
+--   The pick is stored here and checked on the server: process-issue accepts it
+--   only if it is one of the bookings the matcher itself found for that
+--   transcript, so nothing can be invented. 'none' means the recorder said none
+--   of them; Admin can still link it later.
+--
+-- USED BY
+--   supabase/functions/process-issue (reads it), src/pages/Recording/RecordPage.tsx (sends it)
+--
+-- DEPENDS ON
+--   Migrations 1–16.
+--
+-- SAFE TO RE-RUN
+--   Yes.
+-- =============================================================================
+
+alter table public.submissions add column if not exists chosen_calendar_event_id text;

@@ -1,0 +1,77 @@
+// =============================================================================
+// WHAT THIS FILE IS
+//   The one place every icon in the app comes from (Lucide, no emoji).
+// WHY IT EXISTS
+//   Emoji render differently on every phone. Lucide icons are crisp SVGs that
+//   follow the text colour (currentColor). Components ask for an icon by a
+//   short app-level name (<Icon name="mic" />), so swapping a glyph is a
+//   one-line change here and only the icons we use end up in the bundle.
+// USED BY
+//   Any component: <Icon name="mic" className="size-5" />
+// =============================================================================
+import type { SVGProps } from 'react'
+import {
+  AlertTriangle, ArrowLeft, Bell, Calendar, CalendarCheck2, Check, ChevronDown, ChevronRight, CircleCheck,
+  Clock, Download, FileAudio, FileText, Inbox, KeyRound, LayoutDashboard, LayoutGrid, Layers, List,
+  Lock, LockOpen, LogOut, MapPin, Mic, Moon, Pause, Pencil, Play, Plus, RefreshCw, Search, ShieldAlert,
+  Square, Sun, Sunset, Trash2, Upload, User, Users, Volume2, WifiOff, X, Sparkles, MoreHorizontal,
+  Utensils, Tag, Filter,
+  type LucideIcon,
+} from 'lucide-react'
+
+const ICONS = {
+  mic: Mic,
+  list: List,
+  inbox: Inbox,
+  grid: LayoutGrid,
+  dashboard: LayoutDashboard,
+  layers: Layers,
+  submissions: FileAudio,
+  calendar: Calendar,
+  calendarCheck: CalendarCheck2,
+  user: User,
+  users: Users,
+  logout: LogOut,
+  key: KeyRound,
+  lock: Lock,
+  unlock: LockOpen,
+  alert: AlertTriangle,
+  shieldAlert: ShieldAlert,
+  wifiOff: WifiOff,
+  check: Check,
+  checkCircle: CircleCheck,
+  plus: Plus,
+  x: X,
+  upload: Upload,
+  download: Download,
+  search: Search,
+  pencil: Pencil,
+  refresh: RefreshCw,
+  file: FileText,
+  arrowLeft: ArrowLeft,
+  stop: Square,
+  play: Play,
+  pause: Pause,
+  trash: Trash2,
+  sun: Sun,
+  sunset: Sunset,
+  moon: Moon,
+  volume: Volume2,
+  bell: Bell,
+  chevron: ChevronDown,
+  chevronRight: ChevronRight,
+  clock: Clock,
+  pin: MapPin,
+  sparkles: Sparkles,
+  more: MoreHorizontal,
+  utensils: Utensils,
+  tag: Tag,
+  filter: Filter,
+} satisfies Record<string, LucideIcon>
+
+export type IconName = keyof typeof ICONS
+
+export function Icon({ name, strokeWidth = 1.9, ...props }: { name: IconName } & SVGProps<SVGSVGElement>) {
+  const Cmp = ICONS[name]
+  return <Cmp aria-hidden="true" strokeWidth={strokeWidth} {...(props as object)} />
+}
