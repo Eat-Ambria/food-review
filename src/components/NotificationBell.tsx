@@ -13,10 +13,14 @@
 //   plays (a sharper alarm for "Serious"). The service worker pings the page
 //   as soon as a push arrives, so this happens immediately, not after the
 //   60-second poll.
+//   Open list: drawn on top of the whole page (a portal to <body>) just under
+//   the bell, with the page behind softly blurred; tap the blur or press Esc
+//   to close. On phones it spans the screen width.
 // USED BY
 //   layouts/AppLayout.tsx (POC users)
 // =============================================================================
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { playNotificationSound } from '../lib/sound'
@@ -58,6 +62,9 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
   const boxRef = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  // Where the list opens: just under the bell (computed when it opens).
+  const [pos, setPos] = useState<{ top: number; right: number; phone: boolean } | null>(null)
   const seenRef = useRef<Set<string> | null>(null)       // ids already known; null until first load
 
   const load = useCallback(async () => {
@@ -91,12 +98,29 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
     }
   }, [load])
 
-  // Close when tapping outside.
+  // While open: the page behind is blurred (the backdrop closes it), Esc closes
+  // it, the page does not scroll, and a resize closes it (its position is fixed).
+  const toggle = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({ top: r.bottom + 8, right: Math.max(12, window.innerWidth - r.right), phone: window.innerWidth < 768 })
+    }
+    setOpen((o) => !o)
+    void load()
+  }
   useEffect(() => {
     if (!open) return
-    const onDown = (e: MouseEvent) => { if (!boxRef.current?.contains(e.target as Node)) setOpen(false) }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
+    const close = () => setOpen(false)
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('resize', close)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', close)
+      document.body.style.overflow = prev
+    }
   }, [open])
 
   const unread = notes.filter((n) => !n.read_at).length
@@ -118,7 +142,7 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
 
   return (
     <div className="relative" ref={boxRef}>
-      <button type="button" onClick={() => { setOpen((o) => !o); void load() }} aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} aria-expanded={open}
+      <button ref={btnRef} type="button" onClick={toggle} aria-label={`Notifications${unread ? `, ${unread} unread` : ''}`} aria-expanded={open}
         className={`relative flex size-10 items-center justify-center rounded-full transition-colors ${tone === 'dark' ? 'text-white/85 hover:bg-white/10' : `text-muted hover:bg-ink/[0.05] hover:text-ink ${open ? 'bg-ink/[0.05] text-ink' : ''}`}`}>
         <Icon name="bell" className={tone === 'dark' ? 'size-5' : 'size-[22px]'} />
         {unread > 0 && (
@@ -128,8 +152,12 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
         )}
       </button>
 
-      {open && (
-        <div className={`pop-in absolute z-50 mt-2 w-[min(23rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-line bg-surface shadow-pop ${align === 'right' ? '-right-12 md:right-0' : 'left-0'}`}>
+      {open && pos && createPortal(<>
+        {/* Soft blur over the whole page; tapping it closes the list. */}
+        <div className="fade-in fixed inset-0 z-[70] bg-navy-950/20 backdrop-blur-[3px]" onClick={() => setOpen(false)} aria-hidden="true" />
+        <div role="dialog" aria-label="Notifications"
+          style={pos.phone ? { top: pos.top, left: 12, right: 12 } : { top: pos.top, right: align === 'right' ? pos.right : undefined }}
+          className={`pop-in fixed z-[71] overflow-hidden rounded-2xl border border-line bg-surface shadow-pop ${pos.phone ? '' : 'w-[23rem]'}`}>
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <p className="text-sm font-bold">Notifications{unread > 0 && <span className="ml-1.5 font-semibold text-muted">{unread} new</span>}</p>
             {unread > 0 && <button type="button" onClick={() => void markAll()} className="rounded-md px-1.5 py-0.5 text-xs font-semibold text-muted transition-colors hover:bg-ink/[0.05] hover:text-ink">Mark all read</button>}
@@ -164,7 +192,7 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
             </ul>
           )}
         </div>
-      )}
+      </>, document.body)}
     </div>
   )
 }
