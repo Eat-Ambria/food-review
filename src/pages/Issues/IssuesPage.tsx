@@ -200,32 +200,35 @@ export function IssuesPage() {
   return (
     <div className="mx-auto max-w-[110rem]">
       {/* Phones have no top bar title, so the page shows it. */}
-      <h1 className="mb-4 font-serif text-[2.1rem] font-medium leading-none tracking-[-0.02em] md:hidden">Issues</h1>
+      <div className="mb-4 flex items-center gap-3 md:hidden">
+        <h1 className="font-serif text-[2.1rem] font-medium leading-none tracking-[-0.02em]">Issues</h1>
+        {!loading && <span className="rounded-full bg-ink/[0.07] px-2.5 py-0.5 text-sm font-semibold tabular-nums text-ink/80">{filtered.length}</span>}
+      </div>
 
       {/* ---------------- Toolbar ---------------- */}
-      <div className="flex flex-wrap items-center gap-2.5">
+      <div className="flex items-center gap-1.5 sm:gap-2.5">
         <button type="button" onClick={() => applyRange('today')} aria-pressed={range === 'today'}
-          className={`inline-flex h-11 items-center gap-2 rounded-full px-4 text-[15px] font-semibold transition-colors
+          className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-[15px] font-semibold transition-colors sm:h-11 sm:px-4
             ${range === 'today' ? 'bg-[#fbe9c3] text-ink' : 'bg-ink/[0.05] text-ink/80 hover:bg-ink/[0.08]'}`}>
           <Icon name="calendar" className="size-[18px] text-accent" />Today
         </button>
-        <span aria-hidden="true" className="mx-1 h-6 w-px bg-ink/10" />
-        <label className="relative">
+        <span aria-hidden="true" className="mx-0.5 h-6 w-px shrink-0 bg-ink/10 sm:mx-1" />
+        <label className="relative min-w-0">
           <span className="sr-only">Date range</span>
           <select value={range} onChange={(e) => applyRange(e.target.value as Range)}
-            className="h-11 cursor-pointer appearance-none rounded-xl bg-transparent pl-2 pr-9 text-[15px] font-medium text-ink outline-none transition-colors hover:bg-ink/[0.04] focus-visible:ring-4 focus-visible:ring-marigold/15">
+            className="h-10 max-w-full cursor-pointer appearance-none truncate rounded-xl bg-transparent pl-2 pr-8 text-[15px] font-medium text-ink outline-none sm:h-11 sm:pr-9 transition-colors hover:bg-ink/[0.04] focus-visible:ring-4 focus-visible:ring-marigold/15">
             {(['today', 'yesterday', '7d', '30d', 'custom'] as const).map((r) => <option key={r} value={r}>{rangeLabel(r)}</option>)}
           </select>
           <Icon name="chevron" className="pointer-events-none absolute right-2.5 top-1/2 size-[18px] -translate-y-1/2 text-ink/70" />
         </label>
 
-        <div className="ml-auto flex items-center">
-          <p className="pr-4 text-[15px] font-semibold tabular-nums text-ink">
+        <div className="ml-auto flex shrink-0 items-center">
+          <p className="hidden pr-4 text-[15px] font-semibold tabular-nums text-ink sm:block">
             {loading ? '…' : `${filtered.length} Issue${filtered.length === 1 ? '' : 's'}`}
           </p>
-          <span aria-hidden="true" className="h-8 w-px bg-ink/10" />
+          <span aria-hidden="true" className="hidden h-8 w-px bg-ink/10 sm:block" />
           <button type="button" onClick={() => setFiltersOpen((o) => !o)} aria-expanded={filtersOpen}
-            className={`ml-2 inline-flex h-11 items-center gap-2 rounded-full px-4 text-[15px] font-semibold transition-colors
+            className={`inline-flex h-10 items-center gap-2 rounded-full px-3.5 text-[15px] font-semibold transition-colors sm:ml-2 sm:h-11 sm:px-4
               ${filtersOpen || activeFilters ? 'bg-ink/[0.08] text-ink' : 'text-ink/80 hover:bg-ink/[0.05]'}`}>
             <Icon name="filter" className="size-[18px]" />Filter
             {activeFilters > 0 && <span className="flex size-5 items-center justify-center rounded-full bg-ink text-[11px] text-white">{activeFilters}</span>}
@@ -316,10 +319,13 @@ export function IssuesPage() {
                         {/* Venue header (tap to fold / unfold) */}
                         <button type="button" onClick={() => toggleVenue(cardKey)} aria-expanded={!folded}
                           className="pin-hover flex w-full items-center gap-3 rounded-xl bg-[#fbf3e3] px-4 py-3.5 text-left transition-colors hover:bg-[#f8ebd0]">
-                          <Icon name="pin" className={`pin-bounce size-[22px] shrink-0 ${v.key === 'none' ? 'text-faint' : 'text-marigold'}`} />
-                          <span className="min-w-0 flex-1 truncate text-xl font-bold tracking-tight">{v.name}</span>
-                          <span className="shrink-0 text-sm font-semibold tabular-nums text-ink">
-                            {fnCount > 0 && <>{fnCount} Function{fnCount === 1 ? '' : 's'} <span className="text-ink/40">•</span> </>}{v.count} Issue{v.count === 1 ? '' : 's'}
+                          <Icon name="pin" className={`pin-bounce size-[22px] shrink-0 self-start sm:self-center ${v.key === 'none' ? 'text-faint' : 'text-marigold'}`} />
+                          {/* Phone: name (full, may wrap) with the counts below. sm+: one line. */}
+                          <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3">
+                            <span className="min-w-0 text-xl font-bold leading-tight tracking-tight sm:flex-1 sm:truncate">{v.name}</span>
+                            <span className="shrink-0 text-[13px] font-semibold tabular-nums text-ink/70 sm:text-sm sm:text-ink">
+                              {fnCount > 0 && <>{fnCount} Function{fnCount === 1 ? '' : 's'} <span className="text-ink/40">•</span> </>}{v.count} Issue{v.count === 1 ? '' : 's'}
+                            </span>
                           </span>
                           <Icon name="chevron" className={`size-5 shrink-0 text-ink/70 transition-transform duration-200 ${folded ? '' : 'rotate-180'}`} />
                         </button>
