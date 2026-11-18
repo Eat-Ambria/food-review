@@ -67,17 +67,18 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
   const [pos, setPos] = useState<{ top: number; right: number; phone: boolean } | null>(null)
   const seenRef = useRef<Set<string> | null>(null)       // ids already known; null until first load
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (withSound = true) => {
     const { data } = await supabase.from('notifications')
       .select('id, title, body, url, read_at, created_at, submission_id')
       .eq('recipient_user_id', userId).order('created_at', { ascending: false }).limit(20)
     const list = (data ?? []) as Note[]
     // Sound only for notifications that are NEW since the last check (never on
-    // the first load), and only from the bell that is actually visible
-    // (desktop and phone each render one).
+    // the first load), only from the bell that is actually visible (desktop and
+    // phone each render one), and NOT when the app just came back to the front
+    // (e.g. after tapping the notification: the phone has already alerted).
     const fresh = seenRef.current ? list.filter((n) => !n.read_at && !seenRef.current!.has(n.id)) : []
     seenRef.current = new Set(list.map((n) => n.id))
-    if (fresh.length && boxRef.current?.offsetParent) {
+    if (withSound && fresh.length && boxRef.current?.offsetParent) {
       playNotificationSound(fresh.some((n) => n.title.startsWith('Serious')) ? 'serious' : 'normal')
     }
     setNotes(list)
@@ -86,7 +87,7 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
   useEffect(() => {
     void load()
     const id = setInterval(() => { if (document.visibilityState === 'visible') void load() }, 60_000)
-    const onFocus = () => void load()
+    const onFocus = () => void load(false)          // back to the front: update quietly
     // The service worker tells open pages the moment a push arrives → check now.
     const onSwMessage = (e: MessageEvent) => { if (e.data?.type === 'issue-desk-push') void load() }
     window.addEventListener('focus', onFocus)
@@ -106,7 +107,7 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
       setPos({ top: r.bottom + 8, right: Math.max(12, window.innerWidth - r.right), phone: window.innerWidth < 768 })
     }
     setOpen((o) => !o)
-    void load()
+    void load(false)
   }
   useEffect(() => {
     if (!open) return
@@ -129,7 +130,7 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
     setOpen(false)
     if (!n.read_at) {
       await supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', n.id)
-      void load()
+      void load(false)
     }
     // Open that complaint's issues (on their own day), not just today's list.
     navigate(n.submission_id ? `/issues?submission=${n.submission_id}` : `/${n.url ?? 'issues'}`)
@@ -137,7 +138,7 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
 
   const markAll = async () => {
     await supabase.rpc('mark_all_notifications_read')
-    void load()
+    void load(false)
   }
 
   return (

@@ -116,7 +116,9 @@ self.addEventListener('push', (event) => {
     // App on screen: show the notification WITHOUT the phone's sound; the app plays
     // its own (src/lib/sound.ts). Web apps cannot set a custom sound for the phone's
     // own notifications, so when the app is closed the phone's default sound is used.
-    if (wins.some((w) => w.visibilityState === 'visible')) { options.silent = true; delete options.vibrate }
+    // "focused", not just "visible": iPhone can report a backgrounded home-screen
+    // app as visible, which made real background notifications silent.
+    if (wins.some((w) => w.focused && w.visibilityState === 'visible')) { options.silent = true; delete options.vibrate }
     await self.registration.showNotification(title, options)
     // Tell any open app window, so it refreshes the bell and plays its sound now.
     for (const w of wins) w.postMessage({ type: 'issue-desk-push', serious })
