@@ -8,7 +8,7 @@
 //   "Keep me signed in" (on by default) keeps the session after the app is
 //   closed, and also remembers the username so it is pre-filled next time.
 //   Turn it off on a shared phone. The PIN itself is never stored by the app.
-//   Layout: one narrow centred column: mark, "Ambria | Issue Desk", headline,
+//   Layout: one narrow centred column: mark, "Ambria | food review", headline,
 //   one line of help, then a plain white card with the form. Nothing else.
 // USED BY
 //   App.tsx route "/login"
@@ -79,7 +79,7 @@ export function LoginPage() {
           <BrandMark className="mx-auto size-12 drop-shadow-[0_8px_18px_rgb(224_162_37/0.28)]" />
           <p className="mt-3 text-[13px] font-semibold tracking-wide text-muted">
             <span className="font-serif text-[1.05rem] font-normal tracking-normal text-ink">Ambria</span>
-            <span className="mx-1.5 text-line-strong">|</span>Issue Desk
+            <span className="mx-1.5 text-line-strong">|</span>food review
           </p>
           <h1 className="mt-6 font-serif text-[2rem] font-normal leading-[1.12] tracking-[-0.02em] text-ink sm:text-[2.35rem]">
             Say what went wrong.<br />The right people see it.

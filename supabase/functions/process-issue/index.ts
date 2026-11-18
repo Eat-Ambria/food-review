@@ -929,7 +929,7 @@ Deno.serve(async (req) => {
     if (!me.roles.includes('admin')) return reply(origin, 403, { error: 'Only an admin can do this.' })
     const to = waNumber(String(body.to ?? ''))
     if (!to) return reply(origin, 400, { error: 'Enter a valid 10-digit Indian mobile number.' })
-    const r = await whapiSend(to, '✅ Test from Ambria Issue Desk: serious-issue alerts will arrive on this number.')
+    const r = await whapiSend(to, '✅ Test from Ambria food review: serious-issue alerts will arrive on this number.')
     return reply(origin, r.ok ? 200 : 502, r.ok ? { ok: true } : { error: r.error })
   }
 

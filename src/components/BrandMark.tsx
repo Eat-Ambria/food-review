@@ -1,6 +1,6 @@
 // =============================================================================
 // WHAT THIS FILE IS
-//   The Ambria Issue Desk logo: the gold cloche + checklist tile on navy.
+//   The Ambria food review logo: the gold cloche + checklist tile on navy.
 // WHY IT EXISTS
 //   One logo everywhere inside the app (sidebar, phone top bar, login page).
 //   It is the same picture as the app icons and favicon: all of them are made

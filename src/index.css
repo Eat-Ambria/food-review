@@ -202,8 +202,31 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: p
 }
 @keyframes pin-bounce { 0% { transform: translateY(0); } 40% { transform: translateY(-4px); } 100% { transform: translateY(0); } }
 
+/* ---- Sidebar links (layouts/AppLayout.tsx) -----------------------------------
+   Hover: a soft light sweeps in from the left, the marigold edge grows from the
+   middle, the icon grows a little and turns gold, the label slides right a little.
+   The active link keeps its full edge and gold icon. */
+.side-link::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit;
+  background: linear-gradient(90deg, rgb(224 162 37 / 0.16), rgb(255 255 255 / 0.05) 55%, transparent);
+  transform: scaleX(0); transform-origin: left; opacity: 0;
+  transition: transform 320ms cubic-bezier(0.2, 0.8, 0.3, 1), opacity 200ms ease;
+}
+.side-link .side-edge { transform: scaleY(0); transition: transform 260ms cubic-bezier(0.2, 0.8, 0.3, 1); }
+.side-link.is-active .side-edge { transform: scaleY(1); }
+.side-link .side-icon { transition: transform 240ms cubic-bezier(0.2, 0.8, 0.3, 1), color 200ms ease; }
+.side-link .side-label { transition: transform 260ms cubic-bezier(0.2, 0.8, 0.3, 1); }
+@media (hover: hover) {
+  .side-link:not(.is-active):hover::before { transform: scaleX(1); opacity: 1; }
+  .side-link:not(.is-active):hover .side-edge { transform: scaleY(0.55); }
+  .side-link:hover .side-icon { transform: translateX(2px) scale(1.12); color: var(--color-marigold); }
+  .side-link:not(.is-active):hover .side-label { transform: translateX(4px); }
+}
+.side-link:active .side-icon { transform: scale(0.92); }
+
 /* People who asked their device for less motion get none of it. */
 @media (prefers-reduced-motion: reduce) {
+  .side-link::before, .side-link .side-edge, .side-link .side-icon, .side-link .side-label { transition: none; }
   .row-hover, .row-hover::before, .card-hover, .chip-hover, .row-hover .row-chevron { transition: none !important; }
   .card-hover:hover, .chip-hover:hover { transform: none; }
   .pin-hover:hover .pin-bounce { animation: none; }

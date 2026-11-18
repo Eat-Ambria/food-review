@@ -1,6 +1,6 @@
 -- =============================================================================
 -- WHAT THIS FILE IS
---   Migration 1 of the Ambria Issue Desk: every table, constraint and index.
+--   Migration 1 of the Ambria food review: every table, constraint and index.
 --
 -- WHY IT EXISTS
 --   One voice recording ("submission") can contain several complaints

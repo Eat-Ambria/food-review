@@ -153,44 +153,79 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
       </button>
 
       {open && pos && createPortal(<>
-        {/* Soft blur over the whole page; tapping it closes the list. */}
-        <div className="fade-in fixed inset-0 z-[70] bg-navy-950/20 backdrop-blur-[3px]" onClick={() => setOpen(false)} aria-hidden="true" />
+        {/* Blur over the page; on phones it starts BELOW the top bar, so the bar
+            (and the bell) stay sharp. Tapping it closes the list. */}
+        <div className="fade-in fixed inset-x-0 bottom-0 z-[70] bg-navy-950/25 backdrop-blur-[2px]"
+          style={{ top: pos.phone ? pos.top - 8 : 0 }} onClick={() => setOpen(false)} aria-hidden="true" />
         <div role="dialog" aria-label="Notifications"
-          style={pos.phone ? { top: pos.top, left: 12, right: 12 } : { top: pos.top, right: align === 'right' ? pos.right : undefined }}
-          className={`pop-in fixed z-[71] overflow-hidden rounded-2xl border border-line bg-surface shadow-pop ${pos.phone ? '' : 'w-[23rem]'}`}>
-          <div className="flex items-center justify-between border-b border-line px-4 py-3">
-            <p className="text-sm font-bold">Notifications{unread > 0 && <span className="ml-1.5 font-semibold text-muted">{unread} new</span>}</p>
-            {unread > 0 && <button type="button" onClick={() => void markAll()} className="rounded-md px-1.5 py-0.5 text-xs font-semibold text-muted transition-colors hover:bg-ink/[0.05] hover:text-ink">Mark all read</button>}
+          style={pos.phone
+            ? { top: pos.top - 2, left: 8, right: 8, maxHeight: `calc(100dvh - ${pos.top + 12}px)` }
+            : { top: pos.top, right: align === 'right' ? pos.right : undefined, maxHeight: `calc(100dvh - ${pos.top + 24}px)` }}
+          className={`pop-in fixed z-[71] flex flex-col overflow-hidden rounded-2xl bg-surface shadow-[0_24px_60px_-20px_rgb(15_22_38/0.55)] ring-1 ring-black/5 ${pos.phone ? '' : 'w-[24rem]'}`}>
+          {/* Header */}
+          <div className="flex items-center justify-between gap-3 px-4 pb-2.5 pt-3.5">
+            <p className="flex items-center gap-2 text-[15px] font-bold">
+              Notifications
+              {unread > 0 && <span className="rounded-full bg-marigold/20 px-2 py-0.5 text-[11px] font-bold text-[#7a5408]">{unread} new</span>}
+            </p>
+            {unread > 0 && (
+              <button type="button" onClick={() => void markAll()}
+                className="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold text-muted transition-colors hover:bg-ink/[0.05] hover:text-ink">
+                <Icon name="check" className="size-3.5" />Mark all read
+              </button>
+            )}
           </div>
+
           {notes.length === 0 ? (
-            <div className="flex flex-col items-center px-6 py-10 text-center">
-              <span className="flex size-10 items-center justify-center rounded-full bg-ink/[0.05] text-muted"><Icon name="bell" className="size-5" /></span>
-              <p className="mt-3 text-sm font-semibold">No notifications yet</p>
+            <div className="flex flex-col items-center px-6 pb-10 pt-6 text-center">
+              <span className="flex size-11 items-center justify-center rounded-full bg-accent-soft text-accent"><Icon name="bell" className="size-5" /></span>
+              <p className="mt-3 text-sm font-semibold">You're all caught up</p>
               <p className="mt-0.5 text-xs text-muted">New issues will show up here.</p>
             </div>
           ) : (
-            <ul className="max-h-[60vh] divide-y divide-line overflow-y-auto">
-              {notes.map((n) => (
-                <li key={n.id}>
-                  <button type="button" onClick={() => void openNote(n)} className={`flex w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-subtle ${n.read_at ? '' : 'bg-accent-soft/40'}`}>
-                    <span className={`mt-1.5 size-2 shrink-0 rounded-full ${n.read_at ? 'bg-transparent' : n.title.startsWith('Serious') ? 'bg-danger' : 'bg-marigold'}`} aria-hidden="true" />
-                    <span className="min-w-0 flex-1">
-                      <span className={`block text-sm ${n.read_at ? 'font-medium text-muted' : 'font-semibold'}`}>{n.title}</span>
-                      {n.body && (() => {
-                        const { lead, rest } = splitBody(n.body)
-                        return (
-                          <span className="mt-0.5 line-clamp-3 block text-xs leading-relaxed text-muted">
-                            {lead && <b className="font-semibold text-ink/85">{lead}: </b>}{rest}
+            <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2">
+              {notes.map((n) => {
+                const serious = n.title.startsWith('Serious')
+                const title = serious ? n.title.replace(/^Serious:\s*/, '') : n.title
+                return (
+                  <li key={n.id}>
+                    <button type="button" onClick={() => void openNote(n)}
+                      className={`flex w-full gap-3 rounded-xl px-2.5 py-3 text-left transition-colors hover:bg-subtle ${n.read_at ? '' : 'bg-accent-soft/50'}`}>
+                      {/* What kind: red warning for serious, gold bell otherwise */}
+                      <span className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ${serious ? 'bg-danger-soft text-danger' : 'bg-[#fbecc7] text-[#9a6a0b]'}`}>
+                        <Icon name={serious ? 'alert' : 'bell'} className="size-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-start justify-between gap-2">
+                          <span className={`text-[13.5px] leading-snug ${n.read_at ? 'font-medium text-ink/75' : 'font-bold text-ink'}`}>
+                            {serious && <span className="mr-1 font-bold text-danger">Serious ·</span>}{title}
                           </span>
-                        )
-                      })()}
-                      <span className="mt-1 block text-[11px] font-medium text-faint">{ago(n.created_at)}</span>
-                    </span>
-                  </button>
-                </li>
-              ))}
+                          <span className="flex shrink-0 items-center gap-1.5 pt-0.5 text-[11px] font-medium text-faint">
+                            {ago(n.created_at)}
+                            {!n.read_at && <span className={`size-2 rounded-full ${serious ? 'bg-danger' : 'bg-marigold'}`} aria-label="Unread" />}
+                          </span>
+                        </span>
+                        {n.body && (() => {
+                          const { lead, rest } = splitBody(n.body)
+                          return (
+                            <span className="mt-1 line-clamp-2 block text-xs leading-relaxed text-muted">
+                              {lead && <b className="font-semibold text-ink/80">{lead}: </b>}{rest}
+                            </span>
+                          )
+                        })()}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           )}
+
+          {/* Footer */}
+          <button type="button" onClick={() => { setOpen(false); navigate('/issues') }}
+            className="flex shrink-0 items-center justify-center gap-1.5 border-t border-line bg-subtle/70 py-3 text-[13px] font-semibold text-ink transition-colors hover:bg-subtle">
+            View all issues<Icon name="chevronRight" className="size-4" />
+          </button>
         </div>
       </>, document.body)}
     </div>

@@ -46,13 +46,14 @@ const ADMIN: NavItem[] = [
 function SideLink({ it }: { it: NavItem }) {
   return (
     <NavLink to={it.to} end={it.to === '/admin'}
-      className={({ isActive }) => `group relative flex h-12 items-center gap-3.5 overflow-hidden rounded-xl px-4 text-[15px] font-medium transition-colors duration-150
-        ${isActive ? 'bg-white/[0.09] text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]' : 'text-white/80 hover:bg-white/[0.04] hover:text-white'}`}>
+      className={({ isActive }) => `side-link group relative isolate flex h-12 items-center gap-3.5 overflow-hidden rounded-xl px-4 text-[15px] font-medium transition-colors duration-200
+        ${isActive ? 'is-active bg-white/[0.09] text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]' : 'text-white/80 hover:text-white'}`}>
       {({ isActive }) => (
         <>
-          <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-[3px] bg-marigold transition-opacity ${isActive ? 'opacity-100' : 'opacity-0'}`} />
-          <Icon name={it.icon} className={`size-5 shrink-0 transition-[color,transform] duration-200 group-hover:scale-110 ${isActive ? 'text-marigold' : 'text-white/70 group-hover:text-marigold'}`} />
-          {it.label}
+          {/* marigold edge: full when active, grows in on hover */}
+          <span aria-hidden="true" className="side-edge absolute inset-y-0 left-0 w-[3px] bg-marigold" />
+          <Icon name={it.icon} className={`side-icon size-5 shrink-0 ${isActive ? 'text-marigold' : 'text-white/70'}`} />
+          <span className="side-label">{it.label}</span>
         </>
       )}
     </NavLink>
@@ -70,7 +71,7 @@ function Brand() {
       <Mark className="mt-0.5 size-11 shrink-0 drop-shadow-[0_6px_14px_rgb(224_162_37/0.25)]" />
       <div className="leading-none">
         <p className="font-serif text-[2rem] tracking-[-0.01em] text-white">Ambria</p>
-        <p className="mt-1.5 pl-0.5 text-[13px] tracking-wide text-white/70">Issue Desk</p>
+        <p className="mt-1.5 pl-0.5 text-[13px] tracking-wide text-white/70">food review</p>
       </div>
     </div>
   )
@@ -225,7 +226,7 @@ export function AppLayout() {
             )}
             <Mark className="size-7 shrink-0" />
             <p className="font-serif text-xl leading-none">Ambria</p>
-            <span className="truncate text-xs font-medium text-white/50">Issue Desk</span>
+            <span className="truncate text-xs font-medium text-white/50">food review</span>
           </div>
           <div className="flex items-center gap-1 pr-1">
             {isPoc && <NotificationBell userId={user.id} tone="dark" />}

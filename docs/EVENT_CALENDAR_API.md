@@ -1,12 +1,12 @@
 <!--
   WHAT THIS FILE IS: the Event Calendar API, as this app uses it.
-  WHY: the Issue Desk reads bookings from the existing Ambria Event Calendar to
+  WHY: the food review reads bookings from the existing Ambria Event Calendar to
   match a complaint to the right event. The full API reference lives in the
   Calendar project: Desktop/ambria-calendar/ambria-calendar/API.md.
-  This file covers only the parts the Issue Desk needs, plus how it is connected.
+  This file covers only the parts the food review needs, plus how it is connected.
   NO KEYS IN THIS FILE: it is committed to git.
 -->
-# Event Calendar API (as used by Issue Desk)
+# Event Calendar API (as used by food review)
 
 Full reference: `Desktop/ambria-calendar/ambria-calendar/API.md` (Calendar project).
 
@@ -20,11 +20,11 @@ serves every table as a REST API (PostgREST).
 | Key | the Calendar project's **anon key**, found in `ambria-calendar/.env` (`VITE_SUPABASE_ANON_KEY`) |
 | Headers | `apikey: <KEY>` and `Authorization: Bearer <KEY>` |
 
-⚠️ This key can also **create, change and delete** bookings. In the Issue Desk it is kept **only** as an
+⚠️ This key can also **create, change and delete** bookings. In the food review it is kept **only** as an
 Edge Function secret, and the `event-calendar` function only ever makes **read (GET)** requests.
 
-## 2. How the Issue Desk connects
-Supabase (Issue Desk project) → Edge Functions → **Secrets**:
+## 2. How the food review connects
+Supabase (food review project) → Edge Functions → **Secrets**:
 
 | Secret | Value |
 |---|---|
@@ -40,7 +40,7 @@ Code: `supabase/functions/event-calendar/index.ts` (Verify JWT **OFF**; it check
 4. Dates are `YYYY-MM-DD`; times are `HH:MM:SS` (24h, India time).
 5. At most 1000 rows per request. We always filter by one day, so this is never reached.
 
-## 4. Calls the Issue Desk makes
+## 4. Calls the food review makes
 
 ### 4.1 Categories (venues): used by Admin → Venues → "Import from Calendar"
 ```

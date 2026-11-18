@@ -1,6 +1,6 @@
 {
-  "name": "Ambria Issue Desk",
-  "short_name": "Issue Desk",
+  "name": "Ambria food review",
+  "short_name": "food review",
   "description": "Record event complaints by voice and route them to the right people.",
   "start_url": "./",
   "scope": "./",
