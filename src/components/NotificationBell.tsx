@@ -16,7 +16,8 @@
 //   In-app banner: when a NEW notification arrives while the app is open, a
 //   banner drops in at the top (phones often show no banner for the app you
 //   are in). Tap = open that complaint. Normal ones hide after 6 s; Serious
-//   ones stay until closed. Checked every 20 s, and at once when a push arrives.
+//   ones stay until closed. Arrives instantly via Supabase Realtime (migration
+//   18); a 20 s check and the push signal are safety nets.
 //   Open list: drawn on top of the whole page (a portal to <body>) just under
 //   the bell, with the page behind softly blurred; tap the blur or press Esc
 //   to close. On phones it spans the screen width.
@@ -92,6 +93,12 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
 
   useEffect(() => {
     void load()
+    // Instant: Realtime tells us the moment a notification row is added for this
+    // user (migration 18). The 20 s check stays as a safety net.
+    const channel = supabase.channel(`notes-${userId}-${Math.random().toString(36).slice(2, 8)}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `recipient_user_id=eq.${userId}` },
+        () => { if (document.visibilityState === 'visible') void load() })
+      .subscribe()
     const id = setInterval(() => { if (document.visibilityState === 'visible') void load() }, 20_000)
     const onFocus = () => void load(false)          // back to the front: update quietly
     // The service worker tells open pages the moment a push arrives → check now.
@@ -99,11 +106,12 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
     window.addEventListener('focus', onFocus)
     navigator.serviceWorker?.addEventListener('message', onSwMessage)
     return () => {
+      void supabase.removeChannel(channel)
       clearInterval(id)
       window.removeEventListener('focus', onFocus)
       navigator.serviceWorker?.removeEventListener('message', onSwMessage)
     }
-  }, [load])
+  }, [load, userId])
 
   // While open: the page behind is blurred (the backdrop closes it), Esc closes
   // it, the page does not scroll, and a resize closes it (its position is fixed).
