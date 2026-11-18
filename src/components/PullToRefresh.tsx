@@ -24,9 +24,14 @@ import { refreshApp } from '../lib/refreshApp'
 const THRESHOLD = 70     // px of (damped) pull needed to refresh
 const MAX = 110
 
+/** How far the page is scrolled, whichever element is doing the scrolling. */
+const pageScrollTop = () =>
+  Math.max(window.scrollY, document.documentElement.scrollTop, document.body.scrollTop,
+    document.getElementById('root')?.scrollTop ?? 0)
+
 /** True if the touch began inside something that is itself scrolled down. */
 function insideScrolledBox(el: EventTarget | null): boolean {
-  for (let n = el as HTMLElement | null; n && n !== document.body; n = n.parentElement) {
+  for (let n = el as HTMLElement | null; n; n = n.parentElement) {
     if (n.scrollTop > 0) return true
   }
   return false
@@ -40,7 +45,7 @@ export function PullToRefresh() {
 
   useEffect(() => {
     const blocked = () =>
-      window.scrollY > 0 || document.querySelector('[data-no-pull], [role="dialog"]') !== null
+      pageScrollTop() > 0 || document.querySelector('[data-no-pull], [role="dialog"]') !== null
 
     const onStart = (e: TouchEvent) => {
       if (refreshing || e.touches.length !== 1 || blocked() || insideScrolledBox(e.target)) { startY.current = null; return }
@@ -49,7 +54,8 @@ export function PullToRefresh() {
     const onMove = (e: TouchEvent) => {
       if (startY.current === null) return
       const dy = e.touches[0].clientY - startY.current
-      if (dy <= 0 || window.scrollY > 0) { pullRef.current = 0; setPull(0); return }
+      // Finger moving up, or the page has started scrolling: this is a scroll, let it go.
+      if (dy <= 0 || pageScrollTop() > 0) { startY.current = null; pullRef.current = 0; setPull(0); return }
       e.preventDefault()                                   // we handle this drag, not the page
       const damped = Math.min(MAX, dy * 0.5)
       pullRef.current = damped
