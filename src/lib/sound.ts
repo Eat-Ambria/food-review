@@ -1,14 +1,19 @@
 // =============================================================================
 // WHAT THIS FILE IS
-//   The in-app notification sound: a soft two-note chime for a new issue, and
-//   a sharper triple beep for a SERIOUS one. Plus the user's On/Off choice.
+//   The app's own notification sound: a loud service-bell "ding-dong-ding" for
+//   a new issue, and a siren + bells for a SERIOUS one. Plus the On/Off choice.
+//   While the app is on screen the phone's own sound is muted (public/sw.js),
+//   so only this plays. When the app is closed the phone uses its default
+//   sound: web apps are not allowed to set a custom sound for that.
 // WHY IT EXISTS
 //   When the app is open, the phone often does not sound for a push, so the
 //   app plays its own sound. The sounds are generated with the Web Audio API
 //   (no audio files to download).
 //   Browsers only allow sound after the person has tapped something on the
-//   page, so the first tap or keypress "unlocks" audio. That happens naturally
-//   at login.
+//   page. iPhone is strict about it: only a real tap (touchend / click) counts,
+//   a short silent sound must be played at that moment, and audio is switched
+//   off again ("interrupted") whenever the app goes to the background. So
+//   EVERY tap re-unlocks audio if it is not running, not just the first one.
 //   The On/Off choice is per device (localStorage); it defaults to On.
 // USED BY
 //   components/NotificationBell.tsx (plays), components/AccountMenu.tsx (switch)
@@ -31,11 +36,11 @@ function audio(): AudioContext | null {
       const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
       ctx = new Ctx()
     }
-    if (ctx.state === 'suspended') void ctx.resume()
+    if (ctx.state !== 'running') void ctx.resume().catch(() => {})   // "suspended" or iPhone's "interrupted"
     if (!out) {
       // Loud but clean on small phone speakers: boost, then a limiter so it never distorts.
       const master = ctx.createGain()
-      master.gain.value = 1.6
+      master.gain.value = 2.4       // loud; the limiter below keeps it clean
       const limiter = ctx.createDynamicsCompressor()
       limiter.threshold.value = -6
       limiter.knee.value = 4
@@ -49,21 +54,52 @@ function audio(): AudioContext | null {
   } catch { return null }
 }
 
-// Unlock audio on the first interaction (browser autoplay rules).
+// Unlock audio on every tap while it is not running (browser autoplay rules).
+// A one-sample silent buffer is played in the tap itself: iPhone needs that.
 if (typeof window !== 'undefined') {
-  const unlock = () => { audio(); window.removeEventListener('pointerdown', unlock); window.removeEventListener('keydown', unlock) }
-  window.addEventListener('pointerdown', unlock)
-  window.addEventListener('keydown', unlock)
+  const unlock = () => {
+    const ac = audio()
+    if (!ac || ac.state === 'running') return
+    try {
+      const src = ac.createBufferSource()
+      src.buffer = ac.createBuffer(1, 1, 22050)
+      src.connect(ac.destination)
+      src.start(0)
+    } catch { /* ignore */ }
+  }
+  for (const type of ['touchend', 'click', 'keydown']) window.addEventListener(type, unlock, { passive: true })
 }
 
-/** One short tone with a soft attack/decay, so it never clicks. */
-function tone(ac: AudioContext, freq: number, start: number, dur: number, type: OscillatorType, peak: number) {
+/**
+ * A bell-like note: a pure tone plus two quieter overtones, struck hard and
+ * ringing out. Sounds like a hotel service bell rather than a beep.
+ */
+function bell(ac: AudioContext, freq: number, start: number, dur: number, peak: number) {
+  for (const [mult, level] of [[1, 1], [2.76, 0.35], [5.4, 0.12]] as const) {
+    const osc = ac.createOscillator()
+    const gain = ac.createGain()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(freq * mult, start)
+    gain.gain.setValueAtTime(0.0001, start)
+    gain.gain.exponentialRampToValueAtTime(peak * level, start + 0.008)
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + dur / mult ** 0.3)
+    osc.connect(gain).connect(out ?? ac.destination)
+    osc.start(start)
+    osc.stop(start + dur + 0.05)
+  }
+}
+
+/** A rising-falling siren sweep (for SERIOUS). */
+function sweep(ac: AudioContext, start: number, dur: number, peak: number) {
   const osc = ac.createOscillator()
   const gain = ac.createGain()
-  osc.type = type
-  osc.frequency.setValueAtTime(freq, start)
+  osc.type = 'sawtooth'
+  osc.frequency.setValueAtTime(900, start)
+  osc.frequency.linearRampToValueAtTime(1800, start + dur * 0.5)
+  osc.frequency.linearRampToValueAtTime(900, start + dur)
   gain.gain.setValueAtTime(0.0001, start)
-  gain.gain.exponentialRampToValueAtTime(peak, start + 0.015)
+  gain.gain.exponentialRampToValueAtTime(peak, start + 0.03)
+  gain.gain.setValueAtTime(peak, start + dur - 0.06)
   gain.gain.exponentialRampToValueAtTime(0.0001, start + dur)
   osc.connect(gain).connect(out ?? ac.destination)
   osc.start(start)
@@ -71,23 +107,30 @@ function tone(ac: AudioContext, freq: number, start: number, dur: number, type: 
 }
 
 /**
- * Tuned for phone speakers (they are loudest around 1–2.5 kHz):
- *   normal:  a bright three-note rising chime (~0.8 s)
- *   serious: a sharp alarm, three fast beeps, repeated three times (~2.4 s)
+ * Tuned for phone speakers (loudest around 1–2.5 kHz):
+ *   normal:  a service-bell "ding-dong-ding" (~1.4 s)
+ *   serious: three siren sweeps followed by two sharp bells (~2.8 s)
  */
 export function playNotificationSound(kind: 'normal' | 'serious' = 'normal'): void {
   if (!soundEnabled()) return
   const ac = audio()
   if (!ac) return
+  // If audio is still waking up (e.g. the app just came back to the front), play once it runs.
+  if (ac.state !== 'running') {
+    ac.resume().then(() => { if (ac.state === 'running') schedule(ac, kind) }).catch(() => {})
+  } else schedule(ac, kind)
+  try { navigator.vibrate?.(kind === 'serious' ? [400, 150, 400, 150, 400, 150, 400] : [200, 80, 200]) } catch { /* not supported */ }
+}
+
+function schedule(ac: AudioContext, kind: 'normal' | 'serious') {
   const t = ac.currentTime + 0.02
   if (kind === 'serious') {
-    for (let r = 0; r < 3; r++) {
-      for (let i = 0; i < 3; i++) tone(ac, i % 2 ? 1480 : 1975, t + r * 0.8 + i * 0.15, 0.13, 'square', 0.45)
-    }
+    for (let r = 0; r < 3; r++) sweep(ac, t + r * 0.62, 0.55, 0.5)
+    bell(ac, 1975, t + 1.95, 0.5, 1)
+    bell(ac, 1975, t + 2.25, 0.6, 1)
   } else {
-    tone(ac, 1046.5, t, 0.22, 'triangle', 0.9)        // C6
-    tone(ac, 1318.5, t + 0.14, 0.24, 'triangle', 0.9) // E6
-    tone(ac, 1568, t + 0.28, 0.5, 'triangle', 0.95)   // G6
+    bell(ac, 1318.5, t, 0.9, 1)          // E6  ding
+    bell(ac, 1046.5, t + 0.28, 0.9, 1)   // C6  dong
+    bell(ac, 1568, t + 0.56, 1.2, 1)     // G6  ding (rings out)
   }
-  try { navigator.vibrate?.(kind === 'serious' ? [400, 150, 400, 150, 400, 150, 400] : [200, 80, 200]) } catch { /* not supported */ }
 }

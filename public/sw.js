@@ -103,7 +103,7 @@ self.addEventListener('push', (event) => {
     body: data.body || '',
     tag: data.tag || 'issue-desk',
     renotify: true,
-    silent: false,                                   // use the phone's notification sound
+    silent: false,                                   // app closed: the phone's own notification sound
     vibrate: serious ? [400, 150, 400, 150, 400, 150, 400] : [200, 80, 200],
     requireInteraction: serious,                     // a serious alert stays until it is seen
     icon: new URL('icon-192.png', self.registration.scope).href,
@@ -112,9 +112,13 @@ self.addEventListener('push', (event) => {
     data: { url: new URL(issueLink(data), self.registration.scope).href },
   }
   event.waitUntil((async () => {
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    // App on screen: show the notification WITHOUT the phone's sound; the app plays
+    // its own (src/lib/sound.ts). Web apps cannot set a custom sound for the phone's
+    // own notifications, so when the app is closed the phone's default sound is used.
+    if (wins.some((w) => w.visibilityState === 'visible')) { options.silent = true; delete options.vibrate }
     await self.registration.showNotification(title, options)
     // Tell any open app window, so it refreshes the bell and plays its sound now.
-    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
     for (const w of wins) w.postMessage({ type: 'issue-desk-push', serious })
   })())
 })

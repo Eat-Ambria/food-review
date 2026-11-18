@@ -82,8 +82,21 @@ const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? ''
 const VAPID_PUBLIC = Deno.env.get('VAPID_PUBLIC_KEY') ?? ''
 const VAPID_PRIVATE = Deno.env.get('VAPID_PRIVATE_KEY') ?? ''
 // Apple rejects ".local" subjects (BadJwtToken), so fall back to this site's https URL.
-const VAPID_SUBJECT_RAW = Deno.env.get('VAPID_SUBJECT') ?? ''
-const VAPID_SUBJECT = VAPID_SUBJECT_RAW && !/\.local\b/i.test(VAPID_SUBJECT_RAW) ? VAPID_SUBJECT_RAW : SUPABASE_URL
+// Apple (iPhone) rejects pushes with 403 BadJwtToken when this is not EXACTLY
+// "mailto:name@domain" or an https:// URL (Chrome is lenient). So tidy whatever
+// was typed into the secret: spaces, quotes, <…>, "mailto: x", a bare email,
+// ".local" addresses. Anything still unusable falls back to the project URL.
+function cleanSubject(raw: string): string {
+  let s = raw.trim().replace(/^["'<]+|["'>]+$/g, '')
+  if (!/^https:\/\//i.test(s)) {
+    s = s.replace(/^mail\s*to\s*:?\s*/i, '').replace(/\s+/g, '')    // "mailto:", "mail to ", "mailto: "
+    if (/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(s)) s = 'mailto:' + s
+  }
+  const okMail = /^mailto:[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(s) && !/\.local$/i.test(s)
+  const okUrl = /^https:\/\/[^\s]+$/i.test(s)
+  return okMail || okUrl ? s : SUPABASE_URL
+}
+const VAPID_SUBJECT = cleanSubject(Deno.env.get('VAPID_SUBJECT') ?? '')
 const PUSH_READY = Boolean(VAPID_PUBLIC && VAPID_PRIVATE)
 
 // WhatsApp for serious complaints (migration 16), sent through Whapi.Cloud like
