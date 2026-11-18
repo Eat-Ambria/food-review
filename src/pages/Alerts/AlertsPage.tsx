@@ -1,7 +1,7 @@
 // =============================================================================
 // WHAT THIS FILE IS
 //   Admin → Serious alerts: the keywords that make a complaint "serious", who
-//   receives the WhatsApp alert, and a test button.
+//   receives the WhatsApp alert.
 // WHY IT EXISTS
 //   When a submitted complaint contains one of these words (Hindi or English),
 //   the process-issue function flags it Serious and sends a WhatsApp message to
@@ -13,11 +13,10 @@
 // USED BY
 //   App.tsx route "/admin/alerts"
 // DEPENDS ON
-//   table alert_keywords (migration 16), process-issue action "whatsapp_test"
+//   table alert_keywords (migration 16)
 // =============================================================================
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../../lib/supabase'
 import { listUsers } from '../../services/userAdminService'
 import type { ManagedUser } from '../../types/users'
@@ -43,9 +42,6 @@ export function AlertsPage() {
   const [pocs, setPocs] = useState<ManagedUser[]>([])
   const [newKw, setNewKw] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [testTo, setTestTo] = useState('')
-  const [testing, setTesting] = useState(false)
-  const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   const load = useCallback(async () => {
     const { data, error: e } = await supabase.from('alert_keywords').select('id, keyword').order('created_at')
@@ -69,17 +65,6 @@ export function AlertsPage() {
     void load()
   }
   const onSubmit = (e: FormEvent) => { e.preventDefault(); void add(newKw) }
-
-  const sendTest = async () => {
-    setTesting(true); setTestMsg(null)
-    const { error: e } = await supabase.functions.invoke('process-issue', { body: { action: 'whatsapp_test', to: testTo } })
-    if (e) {
-      let text = 'Could not send.'
-      if (e instanceof FunctionsHttpError) { try { text = (await e.context.json())?.error ?? text } catch { /* keep */ } }
-      setTestMsg({ ok: false, text })
-    } else setTestMsg({ ok: true, text: 'Sent. Check WhatsApp on that phone.' })
-    setTesting(false)
-  }
 
   const have = new Set(keywords.map((k) => k.keyword.toLowerCase()))
   const withNumber = pocs.filter((p) => usableNumber(p.mobile_number))
@@ -154,16 +139,6 @@ export function AlertsPage() {
           )}
         </Card>
 
-        {/* Test */}
-        <Card as="section" className="p-5 md:p-6">
-          <SectionHeader title="Send a test message" description="Checks that WhatsApp sending works (Whapi token set up)." />
-          <div className="mt-4 flex flex-wrap gap-2">
-            <input value={testTo} onChange={(e) => setTestTo(e.target.value)} inputMode="tel" placeholder="10-digit mobile number" aria-label="Test number"
-              className={inputClass('md', 'w-full sm:w-60')} />
-            <Button variant="secondary" loading={testing} disabled={!testTo.trim()} onClick={() => void sendTest()}>Send test</Button>
-          </div>
-          {testMsg && <Alert tone={testMsg.ok ? 'ok' : 'danger'} className="mt-3">{testMsg.text}</Alert>}
-        </Card>
       </div>
     </div>
   )

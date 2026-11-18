@@ -144,7 +144,7 @@ export function AdminDashboardPage() {
   })()
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-6xl">
       <PageHeader title="Dashboard" description={cronLine ?? 'Last 7 days'}
         actions={<>
           <Button variant="secondary" onClick={() => void load()} disabled={loading}><Icon name="refresh" className={loading ? 'animate-spin' : ''} />Refresh</Button>

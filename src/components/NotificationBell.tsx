@@ -21,6 +21,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { playNotificationSound } from '../lib/sound'
 import { Icon } from './Icon'
+import { displayItem } from '../utils/itemName'
 
 interface Note { id: string; title: string; body: string | null; url: string | null; read_at: string | null; created_at: string; submission_id: string | null }
 
@@ -30,6 +31,26 @@ const ago = (iso: string) => {
   if (m < 60) return `${m} min ago`
   const h = Math.round(m / 60)
   return h < 24 ? `${h} h ago` : new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
+
+/**
+ * Splits a notification body into its lead and the summary, so the lead can be bold:
+ *   "Mr. Rajan · Cocktail · Kitchen: पनीर: The paneer was…"
+ *   → lead "Mr. Rajan · Cocktail · Kitchen: Paneer", rest "The paneer was…"
+ * The database writes it as  [guest · function · ] category[: item]: summary.
+ * The item is shown like everywhere else in the app (Roman script, Title Case).
+ */
+function splitBody(body: string): { lead: string; rest: string } {
+  const start = body.lastIndexOf(' · ', 160)              // the category comes after the last " · "
+  const p1 = body.indexOf(': ', start < 0 ? 0 : start)     // end of the category
+  if (p1 < 0 || p1 > 160) return { lead: '', rest: body }
+  const p2 = body.indexOf(': ', p1 + 2)                    // end of the item, if there is one
+  const between = p2 > 0 ? body.slice(p1 + 2, p2) : ''
+  // An item is a short name (1-4 words), never a sentence.
+  if (p2 > 0 && between.length <= 40 && between.trim().split(/\s+/).length <= 4 && !/[.!?]/.test(between)) {
+    return { lead: `${body.slice(0, p1)}: ${displayItem(between)}`, rest: body.slice(p2 + 2) }
+  }
+  return { lead: body.slice(0, p1), rest: body.slice(p1 + 2) }
 }
 
 export function NotificationBell({ userId, align = 'right', tone = 'light' }: { userId: string; align?: 'left' | 'right'; tone?: 'light' | 'dark' }) {
@@ -127,7 +148,14 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
                     <span className={`mt-1.5 size-2 shrink-0 rounded-full ${n.read_at ? 'bg-transparent' : n.title.startsWith('Serious') ? 'bg-danger' : 'bg-marigold'}`} aria-hidden="true" />
                     <span className="min-w-0 flex-1">
                       <span className={`block text-sm ${n.read_at ? 'font-medium text-muted' : 'font-semibold'}`}>{n.title}</span>
-                      {n.body && <span className="mt-0.5 line-clamp-2 block text-xs leading-relaxed text-muted">{n.body}</span>}
+                      {n.body && (() => {
+                        const { lead, rest } = splitBody(n.body)
+                        return (
+                          <span className="mt-0.5 line-clamp-3 block text-xs leading-relaxed text-muted">
+                            {lead && <b className="font-semibold text-ink/85">{lead}: </b>}{rest}
+                          </span>
+                        )
+                      })()}
                       <span className="mt-1 block text-[11px] font-medium text-faint">{ago(n.created_at)}</span>
                     </span>
                   </button>

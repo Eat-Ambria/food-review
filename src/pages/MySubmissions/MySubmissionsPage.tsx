@@ -122,7 +122,7 @@ export function MySubmissionsPage() {
   const filtersOn = Boolean(venueId || category || query)
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-6xl">
       <PageHeader title="My submissions"
         description={loading ? 'Loading…' : <>
           <b className="font-semibold text-ink">{filtered.length}</b> submission{filtered.length === 1 ? '' : 's'},{' '}
@@ -134,12 +134,25 @@ export function MySubmissionsPage() {
           </Button>
         } />
 
-      {/* Filters: search, date as a segmented bar, then venue + category side by side */}
+      {/* Filters. Phone: stacked (search, date bar, venue + category).
+          Desktop: one row (search | date bar | venue | category). */}
       <div className="space-y-2">
-        <SearchInput value={query} onChange={setQuery} placeholder="Search dish, guest, words…" label="Search submissions" />
-        <Segmented label="Date range" value={range} onChange={applyRange} options={RANGES} className="w-full" />
+        <div className="space-y-2 lg:flex lg:items-center lg:gap-2 lg:space-y-0">
+          <SearchInput value={query} onChange={setQuery} placeholder="Search dish, guest, words…" label="Search submissions" className="lg:min-w-0 lg:flex-1" />
+          <Segmented label="Date range" value={range} onChange={applyRange} options={RANGES} className="w-full lg:w-[25rem] lg:shrink-0" />
+          <div className="grid grid-cols-2 gap-2 lg:w-[21rem] lg:shrink-0">
+            <FilterSelect label="Venue" value={venueId} onChange={(e) => setVenueId(e.target.value)}>
+              <option value="">All venues</option>
+              {venues.map((v) => <option key={v.id} value={v.id}>{v.venue_name}</option>)}
+            </FilterSelect>
+            <FilterSelect label="Category" value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="">All categories</option>
+              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+            </FilterSelect>
+          </div>
+        </div>
         {range === 'custom' && (
-          <div className="sheet-in grid grid-cols-2 gap-2">
+          <div className="sheet-in grid grid-cols-2 gap-2 lg:w-[25rem]">
             <label className="text-xs font-semibold text-muted">From
               <input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} className={inputClass('md', 'mt-1')} />
             </label>
@@ -148,16 +161,6 @@ export function MySubmissionsPage() {
             </label>
           </div>
         )}
-        <div className="grid grid-cols-2 gap-2">
-          <FilterSelect label="Venue" value={venueId} onChange={(e) => setVenueId(e.target.value)}>
-            <option value="">All venues</option>
-            {venues.map((v) => <option key={v.id} value={v.id}>{v.venue_name}</option>)}
-          </FilterSelect>
-          <FilterSelect label="Category" value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="">All categories</option>
-            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-          </FilterSelect>
-        </div>
         {filtersOn && (
           <button type="button" onClick={() => { setVenueId(''); setCategory(''); setQuery('') }}
             className="fade-in inline-flex items-center gap-1 rounded-md px-1 text-sm font-semibold text-muted transition-colors hover:text-ink">

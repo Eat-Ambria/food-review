@@ -52,11 +52,11 @@ function Reported({ issue }: { issue: FeedIssue }) {
 export function Priority({ serious, keywords }: { serious: boolean; keywords?: string[] | null }) {
   return serious ? (
     <span title={keywords?.length ? `Keyword: ${keywords.join(', ')}` : 'Serious'}
-      className="inline-flex items-center gap-1.5 rounded-full bg-danger-soft px-2.5 py-0.5 text-xs font-semibold text-danger ring-1 ring-inset ring-danger/20">
+      className="inline-flex items-center gap-1.5 rounded-full bg-danger-soft px-2.5 py-1 text-xs font-semibold text-danger">
       <Icon name="alert" className="size-3.5" strokeWidth={2.2} />Serious
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-ink/[0.05] px-2.5 py-0.5 text-xs font-medium text-ink/70">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-ink/[0.06] px-2.5 py-1 text-xs font-medium text-ink/70">
       <span className="size-2 rounded-full bg-ink/30" />Normal
     </span>
   )
@@ -93,7 +93,7 @@ export function IssueCard({ issue, focused = false }: { issue: FeedIssue; focuse
             {issue.item ? <ItemTag item={issue.item} category={issue.category} /> : <span className="hidden pl-3 text-ink/40 sm:inline">—</span>}
           </span>
         </span>
-        <span className={`row-text min-w-0 text-sm leading-6 text-ink ${open ? '' : 'line-clamp-2 sm:line-clamp-1'}`}>
+        <span className="row-text min-w-0 text-sm leading-6 text-ink">
           {issue.summary ?? issue.description}
         </span>
         <span className="flex items-center gap-2 text-xs text-muted sm:contents">
@@ -133,7 +133,7 @@ export function IssueCard({ issue, focused = false }: { issue: FeedIssue; focuse
 /** Column titles above a function's issues (hidden on phones). */
 export function IssueTableHead() {
   return (
-    <div className={`hidden bg-subtle px-4 py-2 text-xs font-semibold text-ink/70 ${ISSUE_COLS}`} aria-hidden="true">
+    <div className={`hidden rounded-lg bg-ink/[0.045] px-4 py-2.5 text-[13px] font-semibold text-ink/75 ${ISSUE_COLS}`} aria-hidden="true">
       <span>Department</span><span>Priority</span><span>Item</span><span>Issue</span><span>Reported by</span><span>Time</span><span />
     </div>
   )

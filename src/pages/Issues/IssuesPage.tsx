@@ -198,24 +198,25 @@ export function IssuesPage() {
   const multiDay = groups.length > 1 || from !== to
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[110rem]">
       {/* Phones have no top bar title, so the page shows it. */}
       <h1 className="mb-4 font-serif text-[2.1rem] font-medium leading-none tracking-[-0.02em] md:hidden">Issues</h1>
 
       {/* ---------------- Toolbar ---------------- */}
       <div className="flex flex-wrap items-center gap-2.5">
         <button type="button" onClick={() => applyRange('today')} aria-pressed={range === 'today'}
-          className={`inline-flex h-11 items-center gap-2 rounded-xl border px-4 text-[15px] font-semibold transition-colors
-            ${range === 'today' ? 'border-marigold/70 bg-accent-soft text-ink shadow-[0_4px_12px_-6px_rgb(224_162_37/0.6)]' : 'border-line bg-surface text-ink/80 hover:border-line-strong'}`}>
+          className={`inline-flex h-11 items-center gap-2 rounded-full px-4 text-[15px] font-semibold transition-colors
+            ${range === 'today' ? 'bg-[#fbe9c3] text-ink' : 'bg-ink/[0.05] text-ink/80 hover:bg-ink/[0.08]'}`}>
           <Icon name="calendar" className="size-[18px] text-accent" />Today
         </button>
+        <span aria-hidden="true" className="mx-1 h-6 w-px bg-ink/10" />
         <label className="relative">
           <span className="sr-only">Date range</span>
           <select value={range} onChange={(e) => applyRange(e.target.value as Range)}
-            className="h-11 min-w-[9.5rem] cursor-pointer appearance-none rounded-xl border border-line bg-surface pl-4 pr-10 text-[15px] font-medium text-ink shadow-[0_1px_2px_rgb(23_32_51/0.05)] outline-none transition-colors hover:border-line-strong focus:border-ink/40 focus:ring-4 focus:ring-marigold/15">
+            className="h-11 cursor-pointer appearance-none rounded-xl bg-transparent pl-2 pr-9 text-[15px] font-medium text-ink outline-none transition-colors hover:bg-ink/[0.04] focus-visible:ring-4 focus-visible:ring-marigold/15">
             {(['today', 'yesterday', '7d', '30d', 'custom'] as const).map((r) => <option key={r} value={r}>{rangeLabel(r)}</option>)}
           </select>
-          <Icon name="chevron" className="pointer-events-none absolute right-3.5 top-1/2 size-[18px] -translate-y-1/2 text-ink/70" />
+          <Icon name="chevron" className="pointer-events-none absolute right-2.5 top-1/2 size-[18px] -translate-y-1/2 text-ink/70" />
         </label>
 
         <div className="ml-auto flex items-center">
@@ -224,8 +225,8 @@ export function IssuesPage() {
           </p>
           <span aria-hidden="true" className="h-8 w-px bg-ink/10" />
           <button type="button" onClick={() => setFiltersOpen((o) => !o)} aria-expanded={filtersOpen}
-            className={`ml-4 inline-flex h-11 items-center gap-2 rounded-xl border px-4 text-[15px] font-semibold transition-colors
-              ${filtersOpen || activeFilters ? 'border-ink/30 bg-surface text-ink' : 'border-line bg-surface text-ink/80 hover:border-line-strong'}`}>
+            className={`ml-2 inline-flex h-11 items-center gap-2 rounded-full px-4 text-[15px] font-semibold transition-colors
+              ${filtersOpen || activeFilters ? 'bg-ink/[0.08] text-ink' : 'text-ink/80 hover:bg-ink/[0.05]'}`}>
             <Icon name="filter" className="size-[18px]" />Filter
             {activeFilters > 0 && <span className="flex size-5 items-center justify-center rounded-full bg-ink text-[11px] text-white">{activeFilters}</span>}
           </button>
@@ -311,10 +312,10 @@ export function IssuesPage() {
                     const cardKey = d.day + '|' + v.key
                     const folded = collapsed.has(cardKey)
                     return (
-                      <Card key={v.key} className="card-hover overflow-hidden">
+                      <Card key={v.key} className="card-hover overflow-hidden border-transparent! p-2">
                         {/* Venue header (tap to fold / unfold) */}
                         <button type="button" onClick={() => toggleVenue(cardKey)} aria-expanded={!folded}
-                          className="pin-hover flex w-full items-center gap-3 bg-[linear-gradient(90deg,rgb(224_162_37/0.08),transparent_55%)] px-5 py-4 text-left transition-colors hover:bg-[linear-gradient(90deg,rgb(224_162_37/0.16),transparent_70%)]">
+                          className="pin-hover flex w-full items-center gap-3 rounded-xl bg-[#fbf3e3] px-4 py-3.5 text-left transition-colors hover:bg-[#f8ebd0]">
                           <Icon name="pin" className={`pin-bounce size-[22px] shrink-0 ${v.key === 'none' ? 'text-faint' : 'text-marigold'}`} />
                           <span className="min-w-0 flex-1 truncate text-xl font-bold tracking-tight">{v.name}</span>
                           <span className="shrink-0 text-sm font-semibold tabular-nums text-ink">
@@ -327,9 +328,9 @@ export function IssuesPage() {
                           const icon = shiftIcon(e.shift)
                           const items = itemCounts(e.issues, (i) => i.item, (i) => i.category)
                           return (
-                            <div key={e.key} className="border-t border-line">
+                            <div key={e.key}>
                               {/* Function: shift icon + shift | guest - function · area */}
-                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-3">
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-3 pt-4">
                                 {e.identified ? (
                                   <>
                                     {e.shift && (
@@ -338,8 +339,8 @@ export function IssuesPage() {
                                       </span>
                                     )}
                                     {e.shift && <span aria-hidden="true" className="h-4 w-px bg-line-strong" />}
-                                    <span className="text-[15px] font-semibold">{[e.guest, e.fn].filter(Boolean).join(' - ') || e.title || 'Function'}</span>
-                                    {e.area && <span className="text-sm text-muted">{e.area}</span>}
+                                    <span className="text-[15px] text-ink/90">{[e.guest, e.fn].filter(Boolean).join(' - ') || e.title || 'Function'}</span>
+                                    {e.area && <span className="rounded-full bg-ink/[0.06] px-2.5 py-0.5 text-[13px] text-ink/70">{e.area}</span>}
                                   </>
                                 ) : (
                                   <span className="text-[15px] text-ink/80">Not linked to a function</span>
@@ -347,18 +348,18 @@ export function IssuesPage() {
                               </div>
 
                               {/* Items: each dish / thing once with a count; total on the right. */}
-                              <div className="flex items-center gap-2 border-t border-line/70 px-5 py-2.5">
+                              <div className="flex items-center gap-2 border-t border-line/70 px-4 py-3">
                                 <span className="text-sm text-ink/80">Items:</span>
                                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
                                   {items.length > 0
                                     ? items.map((x) => <ItemTag key={x.key} item={x.item} category={x.category} count={x.count} showOne />)
                                     : <span className="text-sm text-faint">—</span>}
                                 </div>
-                                <span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-lg bg-ink/[0.06] px-2 text-sm font-semibold tabular-nums">{e.issues.length}</span>
+                                <span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-ink/[0.06] px-2 text-sm font-semibold tabular-nums">{e.issues.length}</span>
                               </div>
 
                               {/* The issues as a table, same dish / thing together */}
-                              <div className="px-0 pb-1 sm:px-2">
+                              <div className="pb-1">
                                 <IssueTableHead />
                                 <ul className="divide-y divide-line">
                                   {sortByItem(e.issues, (i) => i.item).map((i) => <IssueCard key={i.issue_id} issue={i} focused={i.submission_id === focusId} />)}

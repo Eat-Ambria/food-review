@@ -11,19 +11,19 @@
 // =============================================================================
 
 const TONES: Record<string, string> = {
-  'Kitchen':       'bg-orange-50 text-orange-800 ring-orange-200',
-  'F&B Service':   'bg-amber-50 text-amber-800 ring-amber-200',
-  'Beverage':      'bg-teal-50 text-teal-800 ring-teal-200',
-  'Crockery':      'bg-stone-100 text-stone-700 ring-stone-200',
-  'Housekeeping':  'bg-sky-50 text-sky-800 ring-sky-200',
-  'Maintenance':   'bg-rose-50 text-rose-800 ring-rose-200',
-  'Decor':         'bg-pink-50 text-pink-800 ring-pink-200',
-  'Entertainment': 'bg-violet-50 text-violet-800 ring-violet-200',
-  'Security':      'bg-emerald-50 text-emerald-800 ring-emerald-200',
-  'Horticulture':  'bg-lime-50 text-lime-800 ring-lime-200',
-  'IT & Tech':     'bg-indigo-50 text-indigo-800 ring-indigo-200',
+  'Kitchen':       'bg-orange-100 text-orange-800 ring-orange-200',
+  'F&B Service':   'bg-amber-100 text-amber-800 ring-amber-200',
+  'Beverage':      'bg-teal-100 text-teal-800 ring-teal-200',
+  'Crockery':      'bg-stone-200/80 text-stone-700 ring-stone-200',
+  'Housekeeping':  'bg-sky-100 text-sky-800 ring-sky-200',
+  'Maintenance':   'bg-rose-100 text-rose-800 ring-rose-200',
+  'Decor':         'bg-pink-100 text-pink-800 ring-pink-200',
+  'Entertainment': 'bg-violet-100 text-violet-800 ring-violet-200',
+  'Security':      'bg-emerald-100 text-emerald-800 ring-emerald-200',
+  'Horticulture':  'bg-lime-100 text-lime-800 ring-lime-200',
+  'IT & Tech':     'bg-indigo-100 text-indigo-800 ring-indigo-200',
 }
-const OTHER = 'bg-slate-100 text-slate-700 ring-slate-200'
+const OTHER = 'bg-slate-200/80 text-slate-700 ring-slate-200'
 
 /** Tailwind classes for a category chip (background, text, ring). */
 export const categoryTone = (name: string | null | undefined) => TONES[name ?? ''] ?? OTHER

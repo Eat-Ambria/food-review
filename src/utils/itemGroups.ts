@@ -14,8 +14,11 @@
 //   pages/Issues/IssuesPage.tsx, pages/MySubmissions, pages/Recording/RecordPage.tsx
 // =============================================================================
 
+import { displayItem } from './itemName'
+
+// Same key for "पनीर", "Paneer" and "paneer " (via the display name).
 export const itemKey = (item: string | null | undefined) =>
-  (item ?? '').normalize('NFKC').toLowerCase().replace(/\s+/g, ' ').trim()
+  displayItem(item).toLowerCase()
 
 export interface ItemGroup<T> { key: string; item: string | null; category: string | null; issues: T[] }
 
@@ -27,7 +30,7 @@ export function groupByItem<T>(
   const groups = new Map<string, ItemGroup<T>>()
   for (const it of issues) {
     const key = itemKey(itemOf(it))
-    if (!groups.has(key)) groups.set(key, { key, item: itemOf(it) ?? null, category: categoryOf(it) ?? null, issues: [] })
+    if (!groups.has(key)) groups.set(key, { key, item: key ? displayItem(itemOf(it)) : null, category: categoryOf(it) ?? null, issues: [] })
     groups.get(key)!.issues.push(it)
   }
   const named = [...groups.values()].filter((g) => g.key)

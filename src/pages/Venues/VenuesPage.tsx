@@ -116,7 +116,7 @@ export function VenuesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-6xl">
       <PageHeader title="Venues"
         description="Every name people use for a venue. The app uses these to recognise the venue in a recording and find the event in the Calendar."
         actions={<>
