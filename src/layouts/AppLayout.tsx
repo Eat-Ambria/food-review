@@ -12,9 +12,9 @@
 //   • Desktop top bar: a search box (opens Issues, or My submissions for
 //     recorders, with the words filled in; "/" focuses it), the bell (POCs) and
 //     the account menu (name, phone-notifications switch, Change PIN, Sign out).
-//   • Phone top bar: brand + bell + account menu.
-//   • Phone: a bottom tab bar with up to 4 tabs. Admin's extra pages sit
-//     behind "More".
+//   • Phone top bar: ☰ menu + brand + bell + account menu. ☰ slides the same
+//     navy sidebar in from the left (closes on a link, the backdrop, ✕ or Esc).
+//     There is no bottom tab bar, so the page gets the whole screen.
 //   • Links depend on the user's roles (a user may have several).
 // USED BY
 //   App.tsx (wraps signed-in routes)
@@ -123,12 +123,60 @@ function TopSearch({ canSeeIssues }: { canSeeIssues: boolean }) {
   )
 }
 
+/** Sidebar contents (brand, Work / Admin links, marigold thread): desktop sidebar and phone drawer. */
+function SideNav({ work, admin }: { work: NavItem[]; admin: NavItem[] }) {
+  return (
+    <>
+      <Brand />
+      <nav aria-label="Main" className="relative z-10 flex-1 space-y-7 px-4 pt-2">
+        {work.length > 0 && (
+          <div>
+            <p className="mb-2 px-4 text-xs font-medium uppercase tracking-[0.08em] text-white/55">Work</p>
+            <div className="space-y-1">{work.map((it) => <SideLink key={it.to} it={it} />)}</div>
+          </div>
+        )}
+        {admin.length > 0 && (
+          <div>
+            <p className="mb-2 px-4 text-xs font-medium uppercase tracking-[0.08em] text-white/55">Admin</p>
+            <div className="space-y-1">{admin.map((it) => <SideLink key={it.to} it={it} />)}</div>
+          </div>
+        )}
+      </nav>
+      {/* A thin marigold thread across the bottom, drawn in once. */}
+      <svg aria-hidden="true" viewBox="0 0 272 140" preserveAspectRatio="none" className="pointer-events-none absolute inset-x-0 bottom-0 h-36 w-full">
+        <defs>
+          <linearGradient id="thread" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0" stopColor="#e0a225" stopOpacity="0" />
+            <stop offset="0.45" stopColor="#e0a225" stopOpacity="0.85" />
+            <stop offset="1" stopColor="#e0a225" stopOpacity="0.15" />
+          </linearGradient>
+        </defs>
+        <path d="M0 132 C 70 128, 120 110, 170 72 S 250 14, 272 6" fill="none" stroke="#ffffff" strokeOpacity="0.06" strokeWidth="1" />
+        <path className="thread" d="M0 128 C 80 126, 130 104, 180 68 S 252 22, 272 16" fill="none" stroke="url(#thread)" strokeWidth="1.4" />
+      </svg>
+    </>
+  )
+}
+
+const SIDEBAR_BG = 'bg-[linear-gradient(180deg,#1a2335_0%,#141c2c_100%)]'
+
 export function AppLayout() {
   const { user } = useAuth()
   const location = useLocation()
-  const [moreOpen, setMoreOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)                 // phone sidebar (drawer)
   const [barTitle, setBarTitle] = useState<string | null>(null)   // a page's title shown in the top bar (layouts/barTitle.ts)
-  useEffect(() => { setMoreOpen(false) }, [location.pathname])
+  useEffect(() => { setMenuOpen(false) }, [location.pathname])
+
+  // While the phone menu is open: Esc closes it and the page behind does not scroll.
+  useEffect(() => {
+    if (!menuOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false) }
+    document.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
+  }, [menuOpen])
+
   if (!user) return null
 
   const mine = rolesOf(user)
@@ -136,12 +184,7 @@ export function AppLayout() {
   const work = WORK.filter(allowed)
   const admin = ADMIN.filter(allowed)
   const isPoc = mine.includes('poc')
-
-  // Phone: up to 4 tabs; anything else goes under "More".
-  const mobileAll = [...work, ...admin]
-  const mobileTabs = mobileAll.length <= 4 ? mobileAll : mobileAll.slice(0, 3)
-  const mobileMore = mobileAll.length <= 4 ? [] : mobileAll.slice(3)
-  const moreActive = mobileMore.some((m) => location.pathname === m.to || location.pathname.startsWith(m.to + '/'))
+  const hasMenu = work.length + admin.length > 1
 
   return (
     <div className="relative flex min-h-full">
@@ -152,45 +195,39 @@ export function AppLayout() {
       </svg>
 
       {/* ---------- Desktop sidebar ---------- */}
-      <aside className="sticky top-0 z-20 hidden h-screen w-[17rem] shrink-0 flex-col overflow-y-auto bg-[linear-gradient(180deg,#1a2335_0%,#141c2c_100%)] md:flex">
-        <Brand />
-        <nav aria-label="Main" className="relative z-10 flex-1 space-y-7 px-4 pt-2">
-          {work.length > 0 && (
-            <div>
-              <p className="mb-2 px-4 text-xs font-medium uppercase tracking-[0.08em] text-white/55">Work</p>
-              <div className="space-y-1">{work.map((it) => <SideLink key={it.to} it={it} />)}</div>
-            </div>
-          )}
-          {admin.length > 0 && (
-            <div>
-              <p className="mb-2 px-4 text-xs font-medium uppercase tracking-[0.08em] text-white/55">Admin</p>
-              <div className="space-y-1">{admin.map((it) => <SideLink key={it.to} it={it} />)}</div>
-            </div>
-          )}
-        </nav>
-        {/* A thin marigold thread across the bottom, drawn in once. */}
-        <svg aria-hidden="true" viewBox="0 0 272 140" preserveAspectRatio="none" className="pointer-events-none absolute inset-x-0 bottom-0 h-36 w-full">
-          <defs>
-            <linearGradient id="thread" x1="0" x2="1" y1="0" y2="0">
-              <stop offset="0" stopColor="#e0a225" stopOpacity="0" />
-              <stop offset="0.45" stopColor="#e0a225" stopOpacity="0.85" />
-              <stop offset="1" stopColor="#e0a225" stopOpacity="0.15" />
-            </linearGradient>
-          </defs>
-          <path d="M0 132 C 70 128, 120 110, 170 72 S 250 14, 272 6" fill="none" stroke="#ffffff" strokeOpacity="0.06" strokeWidth="1" />
-          <path className="thread" d="M0 128 C 80 126, 130 104, 180 68 S 252 22, 272 16" fill="none" stroke="url(#thread)" strokeWidth="1.4" />
-        </svg>
+      <aside className={`sticky top-0 z-20 hidden h-screen w-[17rem] shrink-0 flex-col overflow-y-auto ${SIDEBAR_BG} md:flex`}>
+        <SideNav work={work} admin={admin} />
       </aside>
+
+      {/* ---------- Phone sidebar (drawer) ---------- */}
+      {menuOpen && (
+        <div className="fixed inset-0 z-[60] md:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+          <div className="fade-in absolute inset-0 bg-navy-950/45 backdrop-blur-[2px]" onClick={() => setMenuOpen(false)} aria-hidden="true" />
+          <aside className={`drawer-in absolute inset-y-0 left-0 flex w-[17rem] max-w-[85vw] flex-col overflow-y-auto pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-[8px_0_30px_-10px_rgb(0_0_0/0.5)] ${SIDEBAR_BG}`}>
+            <button type="button" onClick={() => setMenuOpen(false)} aria-label="Close menu"
+              className="absolute right-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-20 flex size-9 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white">
+              <Icon name="x" className="size-5" />
+            </button>
+            <SideNav work={work} admin={admin} />
+          </aside>
+        </div>
+      )}
 
       <div className="relative z-10 flex min-w-0 flex-1 flex-col">
         {/* ---------- Phone top bar ---------- */}
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between bg-[linear-gradient(180deg,#1a2335,#151d2d)] px-4 shadow-[0_6px_18px_-10px_rgb(23_32_51/0.6)] pt-[env(safe-area-inset-top)] text-white md:hidden">
-          <div className="flex items-center gap-2">
-            <Mark className="size-7" />
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between bg-[linear-gradient(180deg,#1a2335,#151d2d)] px-2 shadow-[0_6px_18px_-10px_rgb(23_32_51/0.6)] pt-[env(safe-area-inset-top)] text-white md:hidden">
+          <div className="flex min-w-0 items-center gap-1.5">
+            {hasMenu && (
+              <button type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu" aria-expanded={menuOpen}
+                className="flex size-10 shrink-0 items-center justify-center rounded-full text-white/85 transition-colors hover:bg-white/10 active:bg-white/15">
+                <Icon name="menu" className="size-[22px]" />
+              </button>
+            )}
+            <Mark className="size-7 shrink-0" />
             <p className="font-serif text-xl leading-none">Ambria</p>
-            <span className="text-xs font-medium text-white/50">Issue Desk</span>
+            <span className="truncate text-xs font-medium text-white/50">Issue Desk</span>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 pr-1">
             {isPoc && <NotificationBell userId={user.id} tone="dark" />}
             <AccountMenu tone="dark" />
           </div>
@@ -210,50 +247,9 @@ export function AppLayout() {
           <AccountMenu withName />
         </div>
 
-        <main key={location.pathname} className="page-in flex-1 px-4 pb-28 pt-7 md:px-8 md:pb-14 md:pt-10 lg:px-12">
+        <main key={location.pathname} className="page-in flex-1 px-4 pb-[calc(2rem+env(safe-area-inset-bottom))] pt-5 md:px-8 md:pb-14 md:pt-10 lg:px-12">
           <Outlet context={{ setBarTitle } satisfies LayoutContext} />
         </main>
-
-        {/* ---------- Phone bottom tabs ---------- */}
-        {mobileAll.length > 1 && (
-          <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-            {moreOpen && <div className="fade-in fixed inset-0 -z-10 bg-navy-950/20" onClick={() => setMoreOpen(false)} aria-hidden="true" />}
-            <div className="flex">
-              {mobileTabs.map((it) => (
-                <NavLink key={it.to} to={it.to} end={it.to === '/admin'}
-                  className={({ isActive }) => `flex flex-1 flex-col items-center gap-0.5 pb-2 pt-2 text-[11px] font-semibold transition-colors ${isActive ? 'text-ink' : 'text-faint'}`}>
-                  {({ isActive }) => (
-                    <>
-                      <span className={`flex h-7 w-12 items-center justify-center rounded-full transition-colors ${isActive ? 'bg-accent-soft text-accent' : ''}`}>
-                        <Icon name={it.icon} className="size-5" />
-                      </span>
-                      {it.short ?? it.label}
-                    </>
-                  )}
-                </NavLink>
-              ))}
-              {mobileMore.length > 0 && (
-                <button type="button" onClick={() => setMoreOpen((o) => !o)} aria-expanded={moreOpen}
-                  className={`flex flex-1 flex-col items-center gap-0.5 pb-2 pt-2 text-[11px] font-semibold ${moreOpen || moreActive ? 'text-ink' : 'text-faint'}`}>
-                  <span className={`flex h-7 w-12 items-center justify-center rounded-full ${moreOpen || moreActive ? 'bg-accent-soft text-accent' : ''}`}>
-                    <Icon name="more" className="size-5" />
-                  </span>
-                  More
-                </button>
-              )}
-            </div>
-            {moreOpen && (
-              <div className="sheet-in absolute inset-x-3 bottom-full mb-2 overflow-hidden rounded-2xl border border-line bg-surface p-1.5 shadow-pop">
-                {mobileMore.map((it) => (
-                  <NavLink key={it.to} to={it.to} end={it.to === '/admin'}
-                    className={({ isActive }) => `flex h-12 items-center gap-3 rounded-xl px-3 text-sm font-semibold ${isActive ? 'bg-accent-soft text-ink' : 'text-ink hover:bg-subtle'}`}>
-                    {({ isActive }) => <><Icon name={it.icon} className={`size-5 ${isActive ? 'text-accent' : 'text-muted'}`} />{it.label}</>}
-                  </NavLink>
-                ))}
-              </div>
-            )}
-          </nav>
-        )}
       </div>
     </div>
   )

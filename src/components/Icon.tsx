@@ -15,7 +15,7 @@ import {
   Clock, Download, FileAudio, FileText, Inbox, KeyRound, LayoutDashboard, LayoutGrid, Layers, List,
   Lock, LockOpen, LogOut, MapPin, Mic, Moon, Pause, Pencil, Play, Plus, RefreshCw, Search, ShieldAlert,
   Square, Sun, Sunset, Trash2, Upload, User, Users, Volume2, WifiOff, X, Sparkles, MoreHorizontal,
-  Utensils, Tag, Filter,
+  Utensils, Tag, Filter, Menu,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -67,6 +67,7 @@ const ICONS = {
   utensils: Utensils,
   tag: Tag,
   filter: Filter,
+  menu: Menu,
 } satisfies Record<string, LucideIcon>
 
 export type IconName = keyof typeof ICONS

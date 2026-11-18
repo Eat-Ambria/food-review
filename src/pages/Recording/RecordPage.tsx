@@ -423,7 +423,7 @@ export function RecordPage() {
       {rec.status !== 'stopped' && (
         // data-no-pull: pull-to-refresh is off while recording (a reload would lose it)
         <section data-no-pull={recording || rec.status === 'requesting' ? '' : undefined}
-          className={`relative isolate mx-auto flex max-w-[51rem] flex-col items-center overflow-hidden rounded-[2rem] border border-white/90 bg-white/80 px-5 pb-11 pt-9 backdrop-blur-sm transition-shadow duration-300
+          className={`relative isolate mx-auto flex max-w-[51rem] flex-col items-center overflow-hidden rounded-[2rem] border border-white/90 bg-white/80 px-5 pb-7 pt-6 backdrop-blur-sm md:pb-11 md:pt-9 transition-shadow duration-300
           ${recording ? 'shadow-[0_30px_60px_-28px_rgb(192_60_11/0.45)]' : 'shadow-float'}`}>
           {/* Soft light behind the button: gold when idle, a warm red wash while
               recording that brightens with the voice. */}
@@ -442,14 +442,14 @@ export function RecordPage() {
             {recording ? 'Recording' : rec.status === 'requesting' ? 'Starting mic' : 'Ready'}
           </span>
 
-          <p className={`mt-4 text-5xl font-bold leading-none tabular-nums tracking-tight transition-colors md:text-[3.5rem] ${warn ? 'text-danger' : 'text-ink'}`}>
+          <p className={`mt-3 text-5xl font-bold leading-none tabular-nums tracking-tight transition-colors md:mt-4 md:text-[3.5rem] ${warn ? 'text-danger' : 'text-ink'}`}>
             {fmtTime(rec.elapsed)}
           </p>
           <p className="mt-2 text-[15px] text-ink/60">{recording ? `${fmtTime(remaining)} left` : 'Up to 2:00'}</p>
 
           {/* Waveform. Idle: three soft humps that sway gently. Recording: the real
               voice level, newest bar on the right, older bars fading out. */}
-          <div className="mt-7 flex h-14 w-full max-w-md items-center justify-between px-1" aria-hidden="true">
+          <div className="mt-5 flex h-12 w-full max-w-md items-center justify-between px-1 md:mt-7 md:h-14" aria-hidden="true">
             {bars.map((v, i) => recording ? (
               <span key={i}
                 className={`h-full w-[3px] rounded-full transition-transform duration-100 ease-out ${warn ? 'bg-danger' : 'bg-ink'}`}
@@ -463,7 +463,7 @@ export function RecordPage() {
           {/* The button. Idle: a gold ring with a thin cream gap (like a jewellery
               setting) and a breathing golden halo. Recording: a progress ring fills
               (marigold, red in the last 15 s) and one soft pulse shows the mic is live. */}
-          <div className="relative mt-10 flex size-40 items-center justify-center">
+          <div className="relative mt-6 flex size-36 items-center justify-center md:mt-10 md:size-40">
             {!recording && (
               <>
                 <span aria-hidden="true" className="gold-breathe pointer-events-none absolute inset-3 rounded-full bg-marigold/35" />
@@ -486,7 +486,7 @@ export function RecordPage() {
               onClick={recording ? rec.stop : startRecording}
               disabled={rec.status === 'requesting'}
               aria-label={recording ? 'Stop recording' : 'Start recording'}
-              className={`group relative flex size-[7.25rem] items-center justify-center overflow-hidden rounded-full text-white transition-[box-shadow,transform] duration-300 hover:scale-[1.04] active:scale-95 disabled:opacity-60 motion-reduce:transform-none
+              className={`group relative flex size-[6.5rem] items-center justify-center overflow-hidden rounded-full md:size-[7.25rem] text-white transition-[box-shadow,transform] duration-300 hover:scale-[1.04] active:scale-95 disabled:opacity-60 motion-reduce:transform-none
                 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-marigold/50
                 ${recording
                   ? 'bg-[radial-gradient(circle_at_35%_25%,#e2683a,var(--color-danger)_60%)] shadow-[0_12px_30px_-10px_rgb(192_60_11/0.7)]'
@@ -500,7 +500,7 @@ export function RecordPage() {
             </button>
           </div>
 
-          <p className={`mt-7 text-base md:text-[17px] ${warn ? 'font-medium text-danger' : 'text-ink/80'}`} role="status">
+          <p className={`mt-5 text-base md:mt-7 md:text-[17px] ${warn ? 'font-medium text-danger' : 'text-ink/80'}`} role="status">
             {rec.status === 'requesting' && 'Allow microphone access…'}
             {rec.status === 'idle' && 'Tap to start recording'}
             {recording && (warn ? 'Less than 15 seconds left' : 'Recording… tap to stop')}

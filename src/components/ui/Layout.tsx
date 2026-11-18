@@ -24,15 +24,15 @@ export function PageHeader({ title, description, actions, back, align = 'left' }
 }) {
   const center = align === 'center'
   return (
-    <header className={`mb-7 md:mb-9 ${center ? 'text-center' : ''}`}>
+    <header className={`mb-5 md:mb-9 ${center ? 'text-center' : ''}`}>
       {back && <div className="mb-3">{back}</div>}
       <div className={`flex flex-wrap gap-x-4 gap-y-4 ${center ? 'flex-col items-center' : 'items-end justify-between'}`}>
         <div className="min-w-0">
           <h1 className={`font-serif font-normal leading-[1.08] tracking-[-0.02em] text-ink
-            ${center ? 'text-[2.5rem] md:text-[3.4rem]' : 'text-[2.15rem] md:text-[2.6rem]'}`}>{title}</h1>
-          <span aria-hidden="true" className={`mt-3 block h-0.5 w-12 rounded-full bg-marigold ${center ? 'mx-auto w-14' : ''}`} />
+            ${center ? 'text-[2.1rem] md:text-[3.4rem]' : 'text-[2.15rem] md:text-[2.6rem]'}`}>{title}</h1>
+          <span aria-hidden="true" className={`mt-2.5 block h-0.5 w-12 rounded-full bg-marigold md:mt-3 ${center ? 'mx-auto w-14' : ''}`} />
           {description && (
-            <div className={`mt-3.5 max-w-2xl leading-relaxed text-ink/75 ${center ? 'mx-auto text-[15px] md:text-base' : 'text-sm md:text-[15px]'}`}>{description}</div>
+            <div className={`mt-3 max-w-2xl leading-relaxed text-ink/75 md:mt-3.5 ${center ? 'mx-auto text-sm md:text-base' : 'text-sm md:text-[15px]'}`}>{description}</div>
           )}
         </div>
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
