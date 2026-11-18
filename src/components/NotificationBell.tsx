@@ -13,6 +13,10 @@
 //   plays (a sharper alarm for "Serious"). The service worker pings the page
 //   as soon as a push arrives, so this happens immediately, not after the
 //   60-second poll.
+//   In-app banner: when a NEW notification arrives while the app is open, a
+//   banner drops in at the top (phones often show no banner for the app you
+//   are in). Tap = open that complaint. Normal ones hide after 6 s; Serious
+//   ones stay until closed. Checked every 20 s, and at once when a push arrives.
 //   Open list: drawn on top of the whole page (a portal to <body>) just under
 //   the bell, with the page behind softly blurred; tap the blur or press Esc
 //   to close. On phones it spans the screen width.
@@ -66,6 +70,7 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
   // Where the list opens: just under the bell (computed when it opens).
   const [pos, setPos] = useState<{ top: number; right: number; phone: boolean } | null>(null)
   const seenRef = useRef<Set<string> | null>(null)       // ids already known; null until first load
+  const [popup, setPopup] = useState<Note | null>(null)   // in-app banner for a new notification
 
   const load = useCallback(async (withSound = true) => {
     const { data } = await supabase.from('notifications')
@@ -80,13 +85,14 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
     seenRef.current = new Set(list.map((n) => n.id))
     if (withSound && fresh.length && boxRef.current?.offsetParent) {
       playNotificationSound(fresh.some((n) => n.title.startsWith('Serious')) ? 'serious' : 'normal')
+      setPopup(fresh.find((n) => n.title.startsWith('Serious')) ?? fresh[0])
     }
     setNotes(list)
   }, [userId])
 
   useEffect(() => {
     void load()
-    const id = setInterval(() => { if (document.visibilityState === 'visible') void load() }, 60_000)
+    const id = setInterval(() => { if (document.visibilityState === 'visible') void load() }, 20_000)
     const onFocus = () => void load(false)          // back to the front: update quietly
     // The service worker tells open pages the moment a push arrives → check now.
     const onSwMessage = (e: MessageEvent) => { if (e.data?.type === 'issue-desk-push') void load() }
@@ -124,6 +130,13 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
     }
   }, [open])
 
+  // Normal banners hide themselves after 6 s; Serious ones wait for the person.
+  useEffect(() => {
+    if (!popup || popup.title.startsWith('Serious')) return
+    const t = setTimeout(() => setPopup(null), 6000)
+    return () => clearTimeout(t)
+  }, [popup])
+
   const unread = notes.filter((n) => !n.read_at).length
 
   const openNote = async (n: Note) => {
@@ -140,6 +153,38 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
     await supabase.rpc('mark_all_notifications_read')
     void load(false)
   }
+
+  const banner = popup && (() => {
+    const serious = popup.title.startsWith('Serious')
+    const { lead, rest } = splitBody(popup.body ?? '')
+    return createPortal(
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-[90] flex justify-center px-3 pt-[calc(env(safe-area-inset-top)+0.5rem)]">
+        <div role="alert" className={`banner-in pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-2xl bg-surface p-3 pr-2 shadow-[0_18px_44px_-14px_rgb(15_22_38/0.55)] ring-1 ${serious ? 'ring-danger/40' : 'ring-black/5'}`}>
+          <button type="button" onClick={() => { const n = popup; setPopup(null); void openNote(n) }} className="flex min-w-0 flex-1 items-start gap-3 text-left">
+            <span className={`flex size-9 shrink-0 items-center justify-center rounded-full ${serious ? 'bg-danger text-white' : 'bg-[#fbecc7] text-[#9a6a0b]'}`}>
+              <Icon name={serious ? 'alert' : 'bell'} className="size-[18px]" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13.5px] font-bold leading-snug text-ink">
+                {serious && <span className="text-danger">Serious · </span>}{popup.title.replace(/^Serious:\s*/, '')}
+              </span>
+              {popup.body && (
+                <span className="mt-0.5 line-clamp-2 block text-xs leading-relaxed text-muted">
+                  {lead && <b className="font-semibold text-ink/80">{lead}: </b>}{rest}
+                </span>
+              )}
+              <span className="mt-1 block text-[11px] font-semibold text-accent">Tap to open</span>
+            </span>
+          </button>
+          <button type="button" onClick={() => setPopup(null)} aria-label="Dismiss"
+            className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-ink/[0.05] hover:text-ink">
+            <Icon name="x" className="size-4" />
+          </button>
+        </div>
+      </div>,
+      document.body,
+    )
+  })()
 
   return (
     <div className="relative" ref={boxRef}>
@@ -229,6 +274,7 @@ export function NotificationBell({ userId, align = 'right', tone = 'light' }: { 
           </button>
         </div>
       </>, document.body)}
+      {banner}
     </div>
   )
 }
