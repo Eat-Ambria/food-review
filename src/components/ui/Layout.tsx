@@ -19,8 +19,9 @@
 import type { ReactNode } from 'react'
 import { Icon, type IconName } from '../Icon'
 
-export function PageHeader({ title, description, actions, back, align = 'left' }: {
+export function PageHeader({ title, description, actions, back, align = 'left', wideActions = false }: {
   title: ReactNode; description?: ReactNode; actions?: ReactNode; back?: ReactNode; align?: 'left' | 'center'
+  wideActions?: boolean   // phones: the actions row takes the full width (e.g. 3 equal buttons)
 }) {
   const center = align === 'center'
   return (
@@ -35,7 +36,7 @@ export function PageHeader({ title, description, actions, back, align = 'left' }
             <div className={`mt-3 max-w-2xl leading-relaxed text-ink/75 md:mt-3.5 ${center ? 'mx-auto text-sm md:text-base' : 'text-sm md:text-[15px]'}`}>{description}</div>
           )}
         </div>
-        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+        {actions && <div className={`flex flex-wrap items-center gap-2 ${wideActions ? 'max-sm:w-full' : ''}`}>{actions}</div>}
       </div>
     </header>
   )

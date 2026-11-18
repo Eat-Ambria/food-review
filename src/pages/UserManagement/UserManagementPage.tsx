@@ -35,6 +35,35 @@ function fmtDate(iso: string | null): string {
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('')
 
+// Each role as its own coloured chip ("Admin", "Recording User", "POC") instead of "A + B + C".
+const ROLE_ORDER: Role[] = ['admin', 'recorder', 'poc']
+const ROLE_TONE: Record<Role, string> = {
+  admin: 'bg-navy-800 text-white',
+  recorder: 'bg-[#fbecc7] text-[#7a5408]',
+  poc: 'bg-sky-100 text-sky-800',
+}
+function RoleChips({ u }: { u: ManagedUser }) {
+  const mine = rolesOf(u)
+  return (
+    <div className="flex flex-wrap gap-1">
+      {ROLE_ORDER.filter((r) => mine.includes(r)).map((r) => (
+        <span key={r} className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${ROLE_TONE[r]}`}>{ROLE_LABEL[r]}</span>
+      ))}
+    </div>
+  )
+}
+
+/** Initials in a cream circle (grey when the user is inactive). */
+function Avatar({ u, size = 'md' }: { u: ManagedUser; size?: 'md' | 'lg' }) {
+  return (
+    <span className={`flex shrink-0 items-center justify-center rounded-full font-bold
+      ${size === 'lg' ? 'size-11 text-sm' : 'size-9 text-xs'}
+      ${u.is_active ? 'bg-[#fbecc7] text-ink ring-1 ring-marigold/25' : 'bg-ink/[0.05] text-faint'}`}>
+      {initials(u.name)}
+    </span>
+  )
+}
+
 function StatusBadges({ u }: { u: ManagedUser }) {
   return (
     <div className="flex flex-wrap gap-1">
@@ -133,16 +162,19 @@ export function UserManagementPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <PageHeader title="Users"
+      <PageHeader title="Users" wideActions
         description={loading ? 'Loading…' : <>
           <b className="font-semibold text-ink">{users.length}</b> total, <b className="font-semibold text-ink">{activeCount}</b> active
           {defaultPinCount > 0 && <>, <b className="font-semibold text-warn">{defaultPinCount}</b> still on the default PIN</>}
         </>}
-        actions={<>
-          <Button variant="secondary" onClick={exportList} disabled={!filtered.length}><Icon name="download" />Export</Button>
-          <Link to="/admin/users/import" className={buttonClass('secondary')}><Icon name="upload" className="size-4" />Import CSV</Link>
-          <Button onClick={openAdd}><Icon name="plus" />Add user</Button>
-        </>} />
+        actions={
+          // Phone: three equal buttons in one row. Wider screens: side by side.
+          <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto">
+            <Button variant="secondary" onClick={exportList} disabled={!filtered.length} className="px-2 sm:px-4"><Icon name="download" />Export</Button>
+            <Link to="/admin/users/import" className={buttonClass('secondary', 'md', 'px-2 sm:px-4')}><Icon name="upload" className="size-4" />Import<span className="hidden sm:inline">&nbsp;CSV</span></Link>
+            <Button onClick={openAdd} className="px-2 sm:px-4"><Icon name="plus" />Add<span className="hidden sm:inline">&nbsp;user</span></Button>
+          </div>
+        } />
 
       {/* Filters */}
       <div className="flex flex-col gap-2 sm:flex-row">
@@ -196,14 +228,14 @@ export function UserManagementPage() {
                     <tr key={u.id} className={`group transition-colors hover:bg-subtle/70 ${u.is_active ? '' : 'text-muted'}`}>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <span className={`flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${u.is_active ? 'bg-ink/[0.07] text-ink' : 'bg-ink/[0.04] text-faint'}`}>{initials(u.name)}</span>
+                          <Avatar u={u} />
                           <div className="min-w-0">
                             <p className="truncate font-semibold">{u.name}{u.id === me?.id && <span className="ml-1.5 text-xs font-medium text-muted">(you)</span>}</p>
                             <p className="truncate text-xs text-muted">{u.username}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3">{rolesLabel(u)}</td>
+                      <td className="px-4 py-3"><RoleChips u={u} /></td>
                       <td className="px-4 py-3"><StatusBadges u={u} /></td>
                       <td className="whitespace-nowrap px-4 py-3 text-muted tabular-nums">{fmtDate(u.last_login_at)}</td>
                       <td className="px-3 py-2">{actions(u)}</td>
@@ -213,23 +245,32 @@ export function UserManagementPage() {
               </table>
             </Card>
 
-            {/* Mobile cards */}
-            <Card className="divide-y divide-line overflow-hidden md:hidden">
+            {/* Mobile: one card per user */}
+            <div className="space-y-3 md:hidden">
               {filtered.map((u) => (
-                <div key={u.id} className="p-4">
-                  <div className="flex items-start gap-3">
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-ink/[0.07] text-xs font-bold">{initials(u.name)}</span>
+                <Card key={u.id} className={`overflow-hidden ${u.is_active ? '' : 'opacity-75'}`}>
+                  <div className="flex items-start gap-3 p-4 pb-3">
+                    <Avatar u={u} size="lg" />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold">{u.name}{u.id === me?.id && <span className="ml-1.5 text-xs font-medium text-muted">(you)</span>}</p>
-                      <p className="truncate text-xs text-muted">{u.username} · {rolesLabel(u)}</p>
-                      <div className="mt-2"><StatusBadges u={u} /></div>
-                      <p className="mt-2 text-xs text-faint">Last login: {fmtDate(u.last_login_at)}</p>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-[15px] font-bold">{u.name}{u.id === me?.id && <span className="ml-1.5 text-xs font-medium text-muted">(you)</span>}</p>
+                          <p className="truncate text-xs text-muted">@{u.username}</p>
+                        </div>
+                        <StatusBadges u={u} />
+                      </div>
+                      <div className="mt-2.5"><RoleChips u={u} /></div>
                     </div>
                   </div>
-                  <div className="-mx-1 mt-2 [&>div]:justify-start">{actions(u)}</div>
-                </div>
+                  <div className="flex items-center justify-between gap-2 border-t border-line bg-subtle/60 py-1.5 pl-4 pr-2">
+                    <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted">
+                      <Icon name="clock" className="size-3.5 shrink-0" />{u.last_login_at ? fmtDate(u.last_login_at) : 'Never signed in'}
+                    </p>
+                    {actions(u)}
+                  </div>
+                </Card>
               ))}
-            </Card>
+            </div>
           </>
         )}
       </div>
