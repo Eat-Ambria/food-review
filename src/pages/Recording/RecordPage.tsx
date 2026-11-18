@@ -421,7 +421,9 @@ export function RecordPage() {
 
       {/* ---------------------------- Recorder ---------------------------- */}
       {rec.status !== 'stopped' && (
-        <section className={`relative isolate mx-auto flex max-w-[51rem] flex-col items-center overflow-hidden rounded-[2rem] border border-white/90 bg-white/80 px-5 pb-11 pt-9 backdrop-blur-sm transition-shadow duration-300
+        // data-no-pull: pull-to-refresh is off while recording (a reload would lose it)
+        <section data-no-pull={recording || rec.status === 'requesting' ? '' : undefined}
+          className={`relative isolate mx-auto flex max-w-[51rem] flex-col items-center overflow-hidden rounded-[2rem] border border-white/90 bg-white/80 px-5 pb-11 pt-9 backdrop-blur-sm transition-shadow duration-300
           ${recording ? 'shadow-[0_30px_60px_-28px_rgb(192_60_11/0.45)]' : 'shadow-float'}`}>
           {/* Soft light behind the button: gold when idle, a warm red wash while
               recording that brightens with the voice. */}

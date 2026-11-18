@@ -21,8 +21,10 @@
 //   src/lib/push.ts (registers it); the Edge Function process-issue sends the pushes
 // =============================================================================
 
-const SHELL = 'issue-desk-shell-v1'
-const ASSETS = 'issue-desk-assets-v1'
+// v2: the page is now always fetched past the browser's HTTP cache (see below);
+// the new names also clear any page copy saved by the old worker.
+const SHELL = 'issue-desk-shell-v2'
+const ASSETS = 'issue-desk-assets-v2'
 const MAX_ASSETS = 80
 
 self.addEventListener('install', () => self.skipWaiting())
@@ -46,10 +48,13 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.endsWith('/version.json')) return          // update check must always be live
 
   // The page: network first, cached copy only when offline.
+  // cache: 'no-store' skips the browser's HTTP cache: GitHub Pages allows
+  // index.html to be kept 10 minutes, which kept bringing back the OLD version
+  // after "Reload".
   if (req.mode === 'navigate') {
     event.respondWith((async () => {
       try {
-        const res = await fetch(req)
+        const res = await fetch(req.url, { cache: 'no-store', credentials: 'same-origin' })
         if (res.ok) (await caches.open(SHELL)).put('shell', res.clone())
         return res
       } catch {

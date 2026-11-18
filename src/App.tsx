@@ -30,6 +30,7 @@ import { AdminDashboardPage } from './pages/AdminDashboard/AdminDashboardPage'
 import { AlertsPage } from './pages/Alerts/AlertsPage'
 import { OfflineBanner } from './components/OfflineBanner'
 import { UpdateNotice } from './components/UpdateNotice'
+import { PullToRefresh } from './components/PullToRefresh'
 import { FullScreenLoader } from './components/FullScreenLoader'
 import { homeFor } from './types/auth'
 
@@ -45,6 +46,7 @@ export default function App() {
       <BrowserRouter basename={import.meta.env.BASE_URL}>
         <OfflineBanner />
         <UpdateNotice />
+        <PullToRefresh />
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/change-pin" element={<RequireAuth allowPinChange><ChangePinPage /></RequireAuth>} />

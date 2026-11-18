@@ -76,6 +76,9 @@ html, body, #root { height: 100%; }
 /* Phones: nothing may stick out sideways. On iPhone even 1px of overflow lets the
    page be pinched OUT into a small box with empty space around it. */
 html, body { overflow-x: hidden; }
+/* The browser's own pull-to-refresh is off; components/PullToRefresh.tsx does it
+   (and works in the installed app too). */
+html, body { overscroll-behavior-y: contain; }
 #root { overflow-x: clip; }
 
 /* iPhone zooms the page in when you tap a field whose text is under 16px, and
