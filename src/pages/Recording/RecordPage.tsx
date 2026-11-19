@@ -601,16 +601,18 @@ export function RecordPage() {
 
           {submitError && <Alert tone="danger">{submitError}</Alert>}
 
-          {/* Actions: sticky above the tab bar on phones, so Submit is always in reach. */}
-          <div className="sticky bottom-[calc(3.85rem+env(safe-area-inset-bottom))] z-10 -mx-4 border-t border-line bg-canvas/95 px-4 py-3 backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:p-0 md:backdrop-blur-none">
-            <div className="flex gap-2">
-              <Button variant="secondary" size="lg" className="flex-1" onClick={() => setConfirmDiscard(true)}
+          {/* Actions. Phones: a solid bar stuck to the very bottom of the screen
+              (above the iPhone home indicator), so Submit is always in reach.
+              Wider screens: plain buttons under the cards. */}
+          <div className="sticky bottom-0 z-20 -mx-4 -mb-[calc(2rem+env(safe-area-inset-bottom))] rounded-t-2xl bg-surface px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_30px_-18px_rgb(23_32_51/0.35)] ring-1 ring-black/5 md:static md:mx-0 md:mb-0 md:rounded-none md:bg-transparent md:p-0 md:shadow-none md:ring-0">
+            <div className="flex gap-2.5">
+              <Button variant="secondary" size="lg" className="flex-1 px-3" onClick={() => setConfirmDiscard(true)}
                 disabled={tx.phase === 'running' || submitting} title={tx.phase === 'running' ? 'Wait for the transcript first' : undefined}>
                 <Icon name="refresh" />Record again
               </Button>
-              <Button size="lg" className="flex-[1.4]" loading={submitting} disabled={tx.phase !== 'ready' || !text.trim()}
+              <Button size="lg" className="flex-[1.5]" loading={submitting} disabled={tx.phase !== 'ready' || !text.trim()}
                 onClick={() => void doSubmit(false)}>
-                {submitting ? 'Submitting…' : 'Submit'}
+                {submitting ? 'Submitting…' : <>Submit<Icon name="arrowLeft" className="rotate-180" /></>}
               </Button>
             </div>
             {submitting && <p className="mt-2 text-center text-xs text-muted">Uploading and reading the issues… this can take a few seconds.</p>}
