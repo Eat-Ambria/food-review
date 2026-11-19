@@ -75,6 +75,45 @@ const idleAmp = (i: number) => {
   return 0.14 + Math.max(hump(0.18, 0.55, 0.05), hump(0.5, 1, 0.045), hump(0.8, 0.6, 0.05), 0.18 * Math.sin(Math.PI * x))
 }
 
+/** Five gold bars bouncing like a voice level: "working on your recording". */
+function WaveLoader({ big = false }: { big?: boolean }) {
+  return (
+    <span aria-hidden="true" className={`flex shrink-0 items-center justify-center gap-[3px] rounded-full bg-[#fbecc7] ${big ? 'size-12' : 'size-8'}`}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <span key={i} className={`wave-bar w-[3px] rounded-full bg-marigold ${big ? 'h-5' : 'h-3.5'}`} style={{ animationDelay: `${i * 0.12}s` }} />
+      ))}
+    </span>
+  )
+}
+
+/** The short wait between two recordings, shown as calm processing with a filling bar. */
+function WaitingCard({ until }: { until: string }) {
+  const end = new Date(until).getTime() + 2000               // the page retries ~2 s after
+  const [start] = useState(() => Date.now())
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 250)
+    return () => clearInterval(id)
+  }, [])
+  const total = Math.max(1, end - start)
+  const pct = Math.min(100, Math.max(6, ((now - start) / total) * 100))
+  const left = Math.max(0, Math.ceil((end - now) / 1000))
+  return (
+    <Card className="p-5">
+      <div role="status" className="flex items-center gap-3.5">
+        <WaveLoader big />
+        <div className="min-w-0">
+          <p className="font-semibold">Processing your recording…</p>
+          <p className="mt-0.5 text-sm text-muted">Your recording is safe. {left > 0 ? `Starting in ${left} s` : 'Starting now'}</p>
+        </div>
+      </div>
+      <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-line">
+        <div className="h-full rounded-full bg-marigold transition-[width] duration-300 ease-linear" style={{ width: `${pct}%` }} />
+      </div>
+    </Card>
+  )
+}
+
 const clock = (iso: string) => new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
 
 export function RecordPage() {
@@ -95,6 +134,7 @@ export function RecordPage() {
   const [matchError, setMatchError] = useState<string | null>(null)
   const matchedTextRef = useRef<string | null>(null)            // last text that was matched
   const [chosenEventId, setChosenEventId] = useState<string | null>(null)   // recorder's pick when uncertain
+  const eventCardRef = useRef<HTMLDivElement>(null)                             // to scroll to the function choice
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState<SubmitResult | null>(null)
@@ -342,6 +382,9 @@ export function RecordPage() {
   }
 
   const recording = rec.status === 'recording'
+  // Several functions fit and none was picked yet: Submit waits for a choice
+  // (a function, or 'None of these').
+  const mustChoose = !matchLoading && match?.status === 'ambiguous' && (match.candidates?.length ?? 0) > 1 && !chosenEventId
   const remaining = MAX_SECONDS - rec.elapsed
   const progress = Math.min(rec.elapsed / MAX_SECONDS, 1)
   const edited = rawText !== null && text !== rawText
@@ -540,7 +583,7 @@ export function RecordPage() {
           {tx.phase === 'running' && (
             <Card className="p-5">
               <div role="status" className="flex items-center gap-3">
-                <Spinner className="size-4 text-ink" />
+                <WaveLoader />
                 <p className="text-sm font-semibold">Transcribing{tx.total > 1 ? ` part ${Math.min(tx.done + 1, tx.total)} of ${tx.total}` : ''}…</p>
               </div>
               <div className="mt-4 h-1 overflow-hidden rounded-full bg-line">
@@ -553,12 +596,15 @@ export function RecordPage() {
             </Card>
           )}
 
-          {/* Limit reached: waits and runs by itself */}
-          {tx.phase === 'failed' && tx.retryAt && (
-            <Alert tone="warn" icon="lock" title={tx.error}>
-              {new Date(tx.retryAt).getTime() - Date.now() < 120_000
-                ? <>Your recording is saved. It will be transcribed automatically in a few seconds.</>
-                : <>Your recording is saved. It will be transcribed automatically at <b>{clock(tx.retryAt)}</b>. Keep this page open, or come back after that time.</>}
+          {/* Short wait (the gap between two recordings): looks like normal
+              processing, with a moving wave and a bar that fills until it starts by itself. */}
+          {tx.phase === 'failed' && tx.retryAt && new Date(tx.retryAt).getTime() - Date.now() < 120_000 && (
+            <WaitingCard until={tx.retryAt} />
+          )}
+          {/* Long wait (too many recordings in a short time): say when it will run. */}
+          {tx.phase === 'failed' && tx.retryAt && new Date(tx.retryAt).getTime() - Date.now() >= 120_000 && (
+            <Alert tone="warn" icon="clock" title="Your recording is saved">
+              Many recordings were sent in a short time, so this one will be transcribed automatically at <b>{clock(tx.retryAt)}</b>. Keep this page open, or come back after that time.
             </Alert>
           )}
 
@@ -597,7 +643,11 @@ export function RecordPage() {
             </Card>
           )}
 
-          {tx.phase === 'ready' && <EventMatchCard match={match} loading={matchLoading} error={matchError} chosenId={chosenEventId} onChoose={setChosenEventId} />}
+          {tx.phase === 'ready' && (
+            <div ref={eventCardRef} className="scroll-mt-24">
+              <EventMatchCard match={match} loading={matchLoading} error={matchError} chosenId={chosenEventId} onChoose={setChosenEventId} />
+            </div>
+          )}
 
           {submitError && <Alert tone="danger">{submitError}</Alert>}
 
@@ -607,12 +657,18 @@ export function RecordPage() {
               from hiding behind it. Wider screens: plain buttons under the cards. */}
           <div aria-hidden="true" className="h-20 md:hidden" />
           <div className="fixed inset-x-0 bottom-0 z-30 rounded-t-2xl bg-surface px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_30px_-18px_rgb(23_32_51/0.35)] ring-1 ring-black/5 md:static md:rounded-none md:bg-transparent md:p-0 md:shadow-none md:ring-0">
+            {mustChoose && (
+              <button type="button" onClick={() => eventCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                className="mb-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg bg-accent-soft px-3 py-2 text-[13px] font-semibold text-[#7a5408]">
+                <Icon name="alert" className="size-4" />Choose the function above to submit (or &ldquo;None of these&rdquo;)
+              </button>
+            )}
             <div className="flex gap-2.5">
               <Button variant="secondary" size="lg" className="flex-1 px-3" onClick={() => setConfirmDiscard(true)}
                 disabled={tx.phase === 'running' || submitting} title={tx.phase === 'running' ? 'Wait for the transcript first' : undefined}>
                 <Icon name="refresh" />Record again
               </Button>
-              <Button size="lg" className="flex-[1.5]" loading={submitting} disabled={tx.phase !== 'ready' || !text.trim()}
+              <Button size="lg" className="flex-[1.5]" loading={submitting} disabled={tx.phase !== 'ready' || !text.trim() || mustChoose || matchLoading}
                 onClick={() => void doSubmit(false)}>
                 {submitting ? 'Submitting…' : <>Submit<Icon name="arrowLeft" className="rotate-180" /></>}
               </Button>
