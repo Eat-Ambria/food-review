@@ -359,6 +359,16 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
   // "Wedding Services"). They never count as a near-miss spelling of a venue.
   const COMMON = new Set(['event', 'events', 'decor', 'design', 'services', 'service', 'cuisine', 'tender', 'villa', 'wedding'])
 
+  // A name as it SOUNDS, without spaces: "Manaktala", "मानक तला", "Manak Tala"
+  // all become "manaktala". Speech-to-text often splits a venue name in two or
+  // writes it in Hindi script, so 1–3 neighbouring spoken words are joined and
+  // compared this way too.
+  const soundKey = (s: string) => nameKey(normalize(s).trim().split(' ').map(translitWord).join(''))
+  const spokenKeys = new Set<string>()
+  for (let i = 0; i < words.length; i++) {
+    for (let n = 1; n <= 3 && i + n <= words.length; n++) spokenKeys.add(soundKey(words.slice(i, i + n).join(' ')))
+  }
+
   type Hit = { venue: Venue; via: string; strength: number; phrase: string }
   const exactHits: Hit[] = []
   const subHits: Hit[] = []
@@ -373,6 +383,9 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
     const exact = shortSaid ? normalize(shortSaid).trim()
       : names.filter((n) => has(t, n)).sort((x, y) => y.length - x.length)[0]
     if (exact) { exactHits.push({ venue: v, via: `said "${exact}"`, strength: 3, phrase: exact }); continue }
+    // Said in Hindi script or split in two ("मानक तला" = Manaktala). 6+ letters, so short words can't collide.
+    const spoken = names.filter((n) => soundKey(n).length >= 6).sort((x, y) => y.length - x.length).find((n) => spokenKeys.has(soundKey(n)))
+    if (spoken) { exactHits.push({ venue: v, via: `said "${spoken}" (as spoken)`, strength: 3, phrase: spoken }); continue }
     const sub = v.sub_venues.map((s) => normalize(s).trim()).find((s) => s.length >= 4 && subCount.get(s) === 1 && has(t, s))
     if (sub) { subHits.push({ venue: v, via: `said "${sub}"`, strength: 2, phrase: sub }); continue }
     const near = names.filter((n) => !n.includes(' ') && n.length >= 6 && !COMMON.has(n))

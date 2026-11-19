@@ -225,6 +225,15 @@ describe('matchEvent', () => {
     expect(r2.event!.calendar_event_id).toBe('e2')
   })
 
+  it('a venue said in Hindi script or split in two words is still found', async () => {
+    // Real transcript from Sarvam: "Manaktala" came out as two Hindi words.
+    const r = await match('आज मानक तला में function है उसमें smell आ रही है।')
+    expect(r.venue!.id).toBe('v-am')
+    expect(r.event!.calendar_event_id).toBe('e3')
+    expect((await match('Manak Tala mein dinner mein AC band tha')).venue!.id).toBe('v-am')
+    expect((await match('पुष्पांजलि में lunch में खाना ठंडा था')).event!.calendar_event_id).toBe('e1')
+  })
+
   it('"Ambria Manaktala" is AM, even though "Ambria" is an AP alias', async () => {
     const r = await match('Ambria Manaktala mein dinner')
     expect(r.venue!.id).toBe('v-am')
