@@ -286,6 +286,9 @@ const FUNCTION_WORDS: Record<string, string[]> = {
   cocktail: ['cocktail', 'कॉकटेल'],
   corporate: ['corporate', 'conference', 'office party', 'कॉर्पोरेट'],
   kitty: ['kitty', 'किटी'],
+  lagan: ['lagan', 'लगन', 'lagna'],
+  tilak: ['tilak', 'तिलक'],
+  social: ['social gathering', 'get together', 'gathering', 'सोशल'],
 }
 const SHIFT_WORDS: Record<string, string[]> = {
   Morning: ['morning', 'subah', 'सुबह', 'breakfast', 'नाश्ता', 'nashta'],
@@ -364,10 +367,27 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
   // writes it in Hindi script, so 1–3 neighbouring spoken words are joined and
   // compared this way too.
   const soundKey = (s: string) => nameKey(normalize(s).trim().split(' ').map(translitWord).join(''))
+  // Hindi script hides the short "a" inside words: "मानकतला" reads as
+  // "manakatala", not "manaktala". So the comparison also uses the name with
+  // every "a" removed ("mnktl"); only for names of 6+ letters (see below).
+  const skeleton = (k: string) => k.replace(/a/g, '')
   const spokenKeys = new Set<string>()
+  const spokenSkeletons = new Set<string>()
   for (let i = 0; i < words.length; i++) {
-    for (let n = 1; n <= 3 && i + n <= words.length; n++) spokenKeys.add(soundKey(words.slice(i, i + n).join(' ')))
+    for (let n = 1; n <= 3 && i + n <= words.length; n++) {
+      const k = soundKey(words.slice(i, i + n).join(' '))
+      spokenKeys.add(k)
+      if (skeleton(k).length >= 4) spokenSkeletons.add(skeleton(k))
+    }
   }
+  const saidAloud = (name: string) => {
+    const k = soundKey(name)
+    return k.length >= 6 && (spokenKeys.has(k) || (skeleton(k).length >= 4 && spokenSkeletons.has(skeleton(k))))
+  }
+  // A list word ("haldi", "din wale") said as written OR as it sounds in Hindi
+  // script ("हल्दी"), so the Hindi spellings don't have to be listed one by one.
+  const wordSaid = (w: string) => has(t, w) || (soundKey(w).length >= 4 && spokenKeys.has(soundKey(w)))
+  const saidAny = (list: string[]) => list.some(wordSaid)
 
   type Hit = { venue: Venue; via: string; strength: number; phrase: string }
   const exactHits: Hit[] = []
@@ -384,9 +404,9 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
       : names.filter((n) => has(t, n)).sort((x, y) => y.length - x.length)[0]
     if (exact) { exactHits.push({ venue: v, via: `said "${exact}"`, strength: 3, phrase: exact }); continue }
     // Said in Hindi script or split in two ("मानक तला" = Manaktala). 6+ letters, so short words can't collide.
-    const spoken = names.filter((n) => soundKey(n).length >= 6).sort((x, y) => y.length - x.length).find((n) => spokenKeys.has(soundKey(n)))
+    const spoken = [...names].sort((x, y) => y.length - x.length).find(saidAloud)
     if (spoken) { exactHits.push({ venue: v, via: `said "${spoken}" (as spoken)`, strength: 3, phrase: spoken }); continue }
-    const sub = v.sub_venues.map((s) => normalize(s).trim()).find((s) => s.length >= 4 && subCount.get(s) === 1 && has(t, s))
+    const sub = v.sub_venues.map((s) => normalize(s).trim()).find((s) => s.length >= 4 && subCount.get(s) === 1 && (has(t, s) || saidAloud(s)))
     if (sub) { subHits.push({ venue: v, via: `said "${sub}"`, strength: 2, phrase: sub }); continue }
     const near = names.filter((n) => !n.includes(' ') && n.length >= 6 && !COMMON.has(n))
       .find((n) => t.trim().split(' ').some((tok) => tok.length >= 5 && !COMMON.has(tok) && levenshtein(tok, n) === 1))
@@ -439,7 +459,10 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
       //   only a common surname ("Singh") → +1 (shared by many guests)
       const guestTokens = (e.guest_name ?? '').split(/[^A-Za-z]+/).map(nameKey)
         .filter((x) => x.length >= 2 && !TITLES.has(x))
-      const said = (gt: string) => latinTokens.some((tok) => tok === gt || (gt.length >= 5 && levenshtein(tok, gt) <= 1))
+      const said = (gt: string) => latinTokens.some((tok) => tok === gt
+        || (gt.length >= 5 && levenshtein(tok, gt) <= 1)
+        || (gt.length >= 5 && skeleton(gt).length >= 3 && skeleton(tok) === skeleton(gt)))   // "maalaveey" = "malviya" (hidden "a")
+        || (gt.length >= 5 && spokenKeys.has(gt))                                            // said in two parts
       const hit = guestTokens.filter(said)
       const distinctive = guestTokens.some((g) => g.length < 3 || !COMMON_SURNAMES.has(g))   // initials count as distinctive
       if (guestTokens.length && hit.length === guestTokens.length && distinctive) {
@@ -453,15 +476,15 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
 
       const fn = (functionNameOf(e) ?? '').toLowerCase()
       const fnHit = Object.entries(FUNCTION_WORDS).find(([key, words]) =>
-        [key, ...words].some((w) => fn.includes(w)) && hasAny(t, [key, ...words]))
+        [key, ...words].some((w) => fn.includes(w)) && saidAny([key, ...words]))
       if (fnHit) { score += 2; specific = true; reasons.push(`function "${functionNameOf(e)}"`) }
 
       const sh = shiftOf(e)
-      const saidShifts = Object.keys(SHIFT_WORDS).filter((k) => hasAny(t, SHIFT_WORDS[k]))
+      const saidShifts = Object.keys(SHIFT_WORDS).filter((k) => saidAny(SHIFT_WORDS[k]))
       if (sh && saidShifts.includes(sh)) { score += 2; specific = true; reasons.push(`shift "${sh}"`) }
       else if (sh && saidShifts.length) { score -= 2; reasons.push(`said ${saidShifts.join('/')} but this is ${sh}`) }
 
-      const subHit = (e.sub_venue ?? '').split('+').map((s) => normalize(s).trim()).find((s) => s.length >= 4 && has(t, s))
+      const subHit = (e.sub_venue ?? '').split('+').map((s) => normalize(s).trim()).find((s) => s.length >= 4 && (has(t, s) || saidAloud(s)))
       if (subHit) { score += 2; specific = true; reasons.push(`area "${subHit}"`) }
 
       const prev = scored.find((s) => s.e.id === e.id)

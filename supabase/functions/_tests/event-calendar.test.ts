@@ -143,6 +143,8 @@ const EVENTS: CalEvent[] = [
   ev({ id: 'e3', venue_id: 'am', date: TODAY, shift: 'Dinner', guest_name: 'Kapil Baweja', event_type: 'Birthday' }),
   ev({ id: 'e4', venue_id: 'am', date: '2026-11-16', shift: 'Sundowner', guest_name: 'Anita Gupta', event_type: 'Other', event_type_other: 'Kitty party' }),
   ev({ id: 'e5', venue_id: 'ap', date: '2026-11-15', shift: 'Lunch', guest_name: 'Meena Jain', event_type: 'Other', event_type_other: 'Mehendi' }),
+  ev({ id: 'e6', venue_id: 'ap', date: '2026-11-14', shift: 'Sundowner', guest_name: 'Rohit Malviya', event_type: 'Other', event_type_other: 'Lagan' }),
+  ev({ id: 'e7', venue_id: 'ap', date: '2026-11-14', shift: 'Dinner', guest_name: 'Sunil Mehra', event_type: 'Wedding' }),
 ]
 
 function deps(over: Partial<MatchDeps> = {}) {
@@ -231,7 +233,17 @@ describe('matchEvent', () => {
     expect(r.venue!.id).toBe('v-am')
     expect(r.event!.calendar_event_id).toBe('e3')
     expect((await match('Manak Tala mein dinner mein AC band tha')).venue!.id).toBe('v-am')
+    // One Hindi word with the hidden "a": मानकतला reads as "manakatala".
+    expect((await match('आज मानकतला के function में food में smell आई है, fix करो।')).venue!.id).toBe('v-am')
     expect((await match('पुष्पांजलि में lunch में खाना ठंडा था')).event!.calendar_event_id).toBe('e1')
+  })
+
+  it('guest names and function words are also matched as they sound in Hindi', async () => {
+    // "मालवीय" reads as "maalaveey", the booking says "Malviya" (hidden "a").
+    expect((await match('14 तारीख को मालवीय जी के function में AC खराब था')).event!.calendar_event_id).toBe('e6')
+    // "लगन" is the Lagan function; no Hindi spelling had to be listed.
+    expect((await match('14 तारीख को पुष्पांजलि में लगन में खाना ठंडा था')).event!.calendar_event_id).toBe('e6')
+    expect((await match('14 tarikh ko Pushpanjali mein shaadi mein khana thanda tha')).event!.calendar_event_id).toBe('e7')
   })
 
   it('"Ambria Manaktala" is AM, even though "Ambria" is an AP alias', async () => {
