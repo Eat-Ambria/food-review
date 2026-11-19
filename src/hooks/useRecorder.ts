@@ -1,20 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   A React hook that wraps the browser's MediaRecorder: start/stop, a live
-//   timer, a live loudness level for the waveform, an automatic stop at the
-//   time limit, and clear error types.
-// WHY IT EXISTS
-//   Recording differs between browsers:
-//     • Chrome / Android / Firefox record audio/webm (Opus)
-//     • Safari / iPhone records audio/mp4 (AAC)
-//   We pick the first format the browser supports and keep its MIME type with
-//   the audio. Phase 4 converts every format into WAV chunks for Sarvam, so the
-//   recording format here doesn't matter to the server.
-//   The mic only works on HTTPS or localhost. Opening the app over a plain
-//   http:// LAN address shows the "insecure" error instead of failing silently.
-// USED BY
-//   pages/Recording/RecordPage.tsx
-// =============================================================================
+// Records from the microphone: start/stop, timer, voice level and the 2-minute limit.
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 export type RecorderStatus = 'idle' | 'requesting' | 'recording' | 'stopped'
@@ -29,7 +13,6 @@ export const RECORDER_ERROR_TEXT: Record<RecorderError, string> = {
   failed: 'Recording failed to start. Please try again.',
 }
 
-// In order of preference. Safari only supports mp4.
 const MIME_CANDIDATES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']
 
 function pickMimeType(): string | undefined {
@@ -43,7 +26,7 @@ export function useRecorder(maxSeconds: number) {
   const [status, setStatus] = useState<RecorderStatus>('idle')
   const [error, setError] = useState<RecorderError | null>(null)
   const [elapsed, setElapsed] = useState(0)
-  const [level, setLevel] = useState(0)                 // 0..1, current loudness
+  const [level, setLevel] = useState(0)
   const [recording, setRecording] = useState<Recording | null>(null)
 
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -53,7 +36,6 @@ export function useRecorder(maxSeconds: number) {
   const rafRef = useRef(0)
   const audioCtxRef = useRef<AudioContext | null>(null)
 
-  /** Stops the mic, the meter and the timer loop. */
   const cleanup = useCallback(() => {
     cancelAnimationFrame(rafRef.current)
     streamRef.current?.getTracks().forEach((t) => t.stop())
@@ -65,7 +47,7 @@ export function useRecorder(maxSeconds: number) {
 
   const stop = useCallback(() => {
     const rec = recorderRef.current
-    if (rec && rec.state !== 'inactive') rec.stop()   // onstop builds the Blob
+    if (rec && rec.state !== 'inactive') rec.stop()
   }, [])
 
   const start = useCallback(async () => {
@@ -111,10 +93,9 @@ export function useRecorder(maxSeconds: number) {
       setElapsed(durationSec)
       setStatus('stopped')
     }
-    // If the phone takes the mic away (incoming call, app switch), keep what we have.
+
     stream.getAudioTracks()[0]?.addEventListener('ended', () => stop())
 
-    // Live loudness meter for the waveform.
     try {
       const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
       const ctx = new Ctx()
@@ -130,12 +111,12 @@ export function useRecorder(maxSeconds: number) {
         setLevel(Math.min(1, Math.sqrt(sum / buf.length) * 4))
         const secs = (performance.now() - startedAtRef.current) / 1000
         setElapsed(secs)
-        if (secs >= maxSeconds) { stop(); return }   // hard limit
+        if (secs >= maxSeconds) { stop(); return }
         rafRef.current = requestAnimationFrame(tick)
       }
       rafRef.current = requestAnimationFrame(tick)
     } catch {
-      // The meter is cosmetic; recording still works without it. Keep the timer + limit.
+
       const tick = () => {
         const secs = (performance.now() - startedAtRef.current) / 1000
         setElapsed(secs)
@@ -148,11 +129,10 @@ export function useRecorder(maxSeconds: number) {
     startedAtRef.current = performance.now()
     setElapsed(0)
     setRecording(null)
-    rec.start(1000)      // gather data every second, so a crash mid-way loses at most 1s
+    rec.start(1000)
     setStatus('recording')
   }, [cleanup, maxSeconds, stop])
 
-  /** Throw away the current recording and go back to idle. */
   const discard = useCallback(() => {
     setRecording(null)
     setElapsed(0)
@@ -160,14 +140,12 @@ export function useRecorder(maxSeconds: number) {
     setStatus('idle')
   }, [])
 
-  /** Load a recording saved earlier (e.g. recovered after a page refresh). */
   const restore = useCallback((r: Recording) => {
     setRecording(r)
     setElapsed(r.durationSec)
     setStatus('stopped')
   }, [])
 
-  // Leaving the page mid-recording: release the mic.
   useEffect(() => () => {
     const rec = recorderRef.current
     if (rec && rec.state !== 'inactive') { rec.onstop = null; rec.stop() }

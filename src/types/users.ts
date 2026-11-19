@@ -1,21 +1,12 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Types for the Admin User Management screens and the CSV import.
-// WHY IT EXISTS
-//   Gives the user list, the add/edit form and the import preview one shared
-//   vocabulary.
-// USED BY
-//   services/userAdminService.ts, services/csvImportService.ts, pages/UserManagement/*
-// =============================================================================
+// Types for user management and the CSV import.
 import type { Role } from './auth'
 
-/** A row from admin_list_users(). */
 export interface ManagedUser {
   id: string
   name: string
   username: string
-  role: Role          // primary role
-  roles: Role[]       // every role
+  role: Role
+  roles: Role[]
   mobile_number: string | null
   email: string | null
   is_active: boolean
@@ -25,7 +16,6 @@ export interface ManagedUser {
   locked_until: string | null
 }
 
-/** What gets sent to the admin-users Edge Function for each new user. */
 export interface NewUserInput {
   index: number
   name: string
@@ -43,30 +33,22 @@ export interface CreateResult {
   error?: string
 }
 
-// ---- CSV import preview ------------------------------------------------------
-
-/**
- * ready   → will be imported
- * warning → can be imported, but the admin should look at it first
- * error   → cannot be imported until fixed (e.g. invalid username)
- * blank   → empty line in the file, always skipped
- */
 export type RowState = 'ready' | 'warning' | 'error' | 'blank'
 
 export interface PreviewRow {
-  index: number          // 0-based position in the preview
-  lineNumber: number     // line in the CSV file (header = line 1)
+  index: number
+  lineNumber: number
   name: string
   username: string
   usernameWasGenerated: boolean
   role: Role
   mobile_number: string | null
   email: string | null
-  include: boolean       // admin's tick-box
+  include: boolean
   state: RowState
-  parseErrors: string[]  // fixed problems found while reading the file
-  parseNotes: string[]   // fixed warnings found while reading the file (e.g. role)
-  messages: { text: string; level: 'error' | 'warning' }[]  // shown in the preview, recalculated after every edit
+  parseErrors: string[]
+  parseNotes: string[]
+  messages: { text: string; level: 'error' | 'warning' }[]
 }
 
 export type ImportOutcome = 'imported' | 'skipped' | 'failed'

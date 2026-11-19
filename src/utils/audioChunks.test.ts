@@ -1,7 +1,7 @@
+// Tests for splitting audio into parts.
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { rms, toWavChunks, SAMPLE_RATE } from './audioChunks'
 
-/** Fakes the Web Audio API so decoding "returns" the given 16 kHz samples. */
 function fakeAudio(samples: Float32Array) {
   class FakeCtx {
     decodeAudioData() { return Promise.resolve({ duration: samples.length / SAMPLE_RATE }) }
@@ -54,17 +54,17 @@ describe('toWavChunks', () => {
   })
 
   it('splits long audio into chunks of at most 29 s, cutting at a pause', async () => {
-    // 60 s of sound with a quiet gap at 26.0-26.5 s
+
     const s = tone(60)
     s.fill(0, 26 * SAMPLE_RATE, 26.5 * SAMPLE_RATE)
     fakeAudio(s)
     const { chunks, totalSec } = await toWavChunks(new Blob(['x']))
     expect(totalSec).toBeCloseTo(60)
     for (const c of chunks) expect(c.durationSec).toBeLessThanOrEqual(29)
-    // first cut lands inside the quiet gap
+
     expect(chunks[0].durationSec).toBeGreaterThanOrEqual(26)
     expect(chunks[0].durationSec).toBeLessThanOrEqual(26.5)
-    // chunks are contiguous and cover the whole recording
+
     let pos = 0
     for (const c of chunks) { expect(c.startSec).toBeCloseTo(pos); pos += c.durationSec }
     expect(pos).toBeCloseTo(60)

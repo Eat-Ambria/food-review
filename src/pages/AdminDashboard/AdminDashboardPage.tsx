@@ -1,22 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   The Admin dashboard: headline numbers, where issues come from (by venue and
-//   category, last 7 days), and the recordings that need Admin's attention.
-// WHY IT EXISTS
-//   • Stat tiles: issues today, issues and events in the last 7 days, items
-//     needing attention.
-//   • Two ranked bar lists (venue, category): one series each, a single colour,
-//     a label and number on every bar, so no legend is needed.
-//   • Needs attention:
-//       – processing failed / no issue found → Retry (runs the AI again)
-//       – event not certain → pick the right booking from the ones the matcher
-//         found (nothing is typed by hand)
-// USED BY
-//   App.tsx route "/admin"
-// DEPENDS ON
-//   services/issueService.ts (issues_feed, admin_attention, admin_set_submission_event,
-//   process-issue retry)
-// =============================================================================
+// Admin dashboard: key numbers, issues by venue and department, and recordings that need attention.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { chooseEvent, fetchAttention, fetchIssues, lastCronRun, retryProcessing, type AttentionItem, type FeedIssue, type JobRun } from '../../services/issueService'
@@ -29,7 +11,6 @@ import { Icon } from '../../components/Icon'
 const istToday = () => new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10)
 const minusDays = (iso: string, n: number) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10) }
 
-/** One cell of the headline strip. Numbers turn amber/red only when they need action. */
 function Stat({ label, value, hint, tone }: { label: string; value: number | null; hint?: string; tone?: 'warn' | 'danger' }) {
   const hot = tone && value !== null && value > 0
   return (
@@ -43,7 +24,6 @@ function Stat({ label, value, hint, tone }: { label: string; value: number | nul
   )
 }
 
-/** Ranked horizontal bars: one hue, thin marks, value as text (never in the bar colour). */
 function BarList({ title, rows, loading }: { title: string; rows: { label: string; value: number }[]; loading: boolean }) {
   const max = Math.max(1, ...rows.map((r) => r.value))
   const total = rows.reduce((n, r) => n + r.value, 0)
@@ -128,7 +108,6 @@ export function AdminDashboardPage() {
     setBusyId(null)
   }
 
-  // Health of the 5-minute background job (retries + cleanup).
   const cronLine = (() => {
     if (cron === undefined) return null
     const mins = cron ? Math.round((Date.now() - new Date(cron.started_at).getTime()) / 60_000) : null
@@ -153,7 +132,6 @@ export function AdminDashboardPage() {
 
       {error && <Alert tone="danger" className="mb-4">{error}</Alert>}
 
-      {/* Headline numbers: one strip, cells divided by hairlines. */}
       <Card className="grid grid-cols-2 gap-px overflow-hidden bg-line md:grid-cols-5 [&>*:last-child]:col-span-2 md:[&>*:last-child]:col-span-1">
         <Stat label="Issues today" value={loading ? null : todayCount} />
         <Stat label="Issues, 7 days" value={loading ? null : week.length} />

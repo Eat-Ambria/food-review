@@ -1,16 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Reading issues for the Issues page, My submissions and the Admin dashboard,
-//   plus the two Admin actions (retry processing, choose an event).
-// WHY IT EXISTS
-//   Pages stay simple: they ask for "issues between these dates" and get rows
-//   already joined with venue, event, transcript and recorder name (SQL
-//   function issues_feed, migration 13). Who sees what is decided in the
-//   database: Admin/POC see all, a Recording User only their own.
-// USED BY
-//   pages/Issues/IssuesPage.tsx, pages/MySubmissions/MySubmissionsPage.tsx,
-//   pages/AdminDashboard/AdminDashboardPage.tsx
-// =============================================================================
+// Loads issues and submissions for the lists and the dashboard, plus the admin retry / choose-function actions.
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import type { MatchCandidate } from '../types/events'
@@ -52,13 +40,6 @@ export async function fetchIssues(opts: { from: string; to: string; venueId?: st
   return (data ?? []) as FeedIssue[]
 }
 
-/** Short-lived link to play a recording (private bucket). */
-/**
- * The day(s) a complaint's issues are listed under on the Issues page, using
- * the same rule as issues_feed: the issue's event date, else the complaint's
- * event date, else the day it was recorded (IST). Used to open the right day
- * from a notification. null = not found / not allowed.
- */
 export async function submissionDays(submissionId: string): Promise<{ from: string; to: string } | null> {
   const [{ data: sub }, { data: issues }] = await Promise.all([
     supabase.from('submissions').select('event_date, created_at').eq('id', submissionId).maybeSingle(),
@@ -84,8 +65,6 @@ export async function listCategories(): Promise<string[]> {
   return (data ?? []).map((c) => c.name as string)
 }
 
-// ---- My submissions (Recording User) --------------------------------------------
-
 export interface MySubmission {
   id: string
   created_at: string
@@ -101,7 +80,6 @@ export interface MySubmission {
   issues: { issue_index: number; category_raw: string | null; item: string | null; ai_summary: string | null; venue_id: string | null; venue: { venue_name: string } | null }[]
 }
 
-/** The user's own submissions between two instants (ISO timestamps). */
 export async function fetchMySubmissions(userId: string, fromTs: string, toTs: string): Promise<MySubmission[]> {
   const { data, error } = await supabase.from('submissions')
     .select('id, created_at, processing_status, processing_error, is_serious, reviewed_transcript, event_date, guest_name, function_name, venue_id, venue:venues(venue_name), issues(issue_index, category_raw, item, ai_summary, venue_id, venue:venues(venue_name))')
@@ -113,8 +91,6 @@ export async function fetchMySubmissions(userId: string, fromTs: string, toTs: s
   if (error) throw new Error('Could not load your submissions. ' + error.message)
   return (data ?? []) as unknown as MySubmission[]
 }
-
-// ---- Admin --------------------------------------------------------------------------------
 
 export interface AttentionItem {
   submission_id: string
@@ -138,7 +114,6 @@ export async function fetchAttention(): Promise<AttentionItem[]> {
 
 export interface JobRun { started_at: string; finished_at: string | null; ok: boolean | null; stats: Record<string, unknown> }
 
-/** Latest run of the 5-minute background job (Admin only, via RLS). */
 export async function lastCronRun(): Promise<JobRun | null> {
   const { data } = await supabase.from('job_runs').select('started_at, finished_at, ok, stats')
     .eq('job', 'issue-desk-cron').order('started_at', { ascending: false }).limit(1).maybeSingle()
@@ -150,7 +125,7 @@ export async function retryProcessing(submissionId: string): Promise<void> {
   if (error) {
     let message = 'Retry failed.'
     if (error instanceof FunctionsHttpError) {
-      try { message = (await error.context.json())?.error ?? message } catch { /* keep default */ }
+      try { message = (await error.context.json())?.error ?? message } catch { }
     }
     throw new Error(message)
   }

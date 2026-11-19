@@ -1,15 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Admin → Users: list, search, filter, add, edit, activate/deactivate,
-//   reset PIN, unlock, export to CSV, and the entry point to CSV import.
-// WHY IT EXISTS
-//   It is the single place where the Admin manages who can use the app.
-//   Table on desktop, cards on phones.
-// USED BY
-//   App.tsx route "/admin/users"
-// DEPENDS ON
-//   services/userAdminService.ts, UserFormModal.tsx
-// =============================================================================
+// Admin page to list, add, edit, deactivate, reset the PIN of and unlock users.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
@@ -35,7 +24,6 @@ function fmtDate(iso: string | null): string {
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('')
 
-// Each role as its own coloured chip ("Admin", "Recording User", "POC") instead of "A + B + C".
 const ROLE_ORDER: Role[] = ['admin', 'recorder', 'poc']
 const ROLE_TONE: Record<Role, string> = {
   admin: 'bg-navy-800 text-white',
@@ -53,7 +41,6 @@ function RoleChips({ u }: { u: ManagedUser }) {
   )
 }
 
-/** Initials in a cream circle (grey when the user is inactive). */
 function Avatar({ u, size = 'md' }: { u: ManagedUser; size?: 'md' | 'lg' }) {
   return (
     <span className={`flex shrink-0 items-center justify-center rounded-full font-bold
@@ -168,7 +155,7 @@ export function UserManagementPage() {
           {defaultPinCount > 0 && <>, <b className="font-semibold text-warn">{defaultPinCount}</b> still on the default PIN</>}
         </>}
         actions={
-          // Phone: three equal buttons in one row. Wider screens: side by side.
+
           <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto">
             <Button variant="secondary" onClick={exportList} disabled={!filtered.length} className="px-2 sm:px-4"><Icon name="download" />Export</Button>
             <Link to="/admin/users/import" className={buttonClass('secondary', 'md', 'px-2 sm:px-4')}><Icon name="upload" className="size-4" />Import<span className="hidden sm:inline">&nbsp;CSV</span></Link>
@@ -176,7 +163,6 @@ export function UserManagementPage() {
           </div>
         } />
 
-      {/* Filters */}
       <div className="flex flex-col gap-2 sm:flex-row">
         <SearchInput value={query} onChange={setQuery} placeholder="Search name or username" label="Search users" className="sm:flex-1" />
         <div className="grid grid-cols-2 gap-2 sm:flex">
@@ -211,7 +197,7 @@ export function UserManagementPage() {
                 action={<div className="flex gap-2"><Link to="/admin/users/import" className={buttonClass('secondary')}><Icon name="upload" className="size-4" />Import CSV</Link><Button onClick={openAdd}><Icon name="plus" />Add user</Button></div>} />
         ) : (
           <>
-            {/* Desktop table */}
+
             <Card className="hidden overflow-hidden md:block">
               <table className="w-full text-sm">
                 <thead className="border-b border-line bg-subtle text-left text-xs text-muted">
@@ -245,7 +231,6 @@ export function UserManagementPage() {
               </table>
             </Card>
 
-            {/* Mobile: one card per user */}
             <div className="space-y-3 md:hidden">
               {filtered.map((u) => (
                 <Card key={u.id} className={`overflow-hidden ${u.is_active ? '' : 'opacity-75'}`}>

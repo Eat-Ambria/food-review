@@ -1,8 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Tests for utils/itemName.ts (item names shown in Roman script, Title Case)
-//   and that itemGroups puts "पनीर" and "Paneer" together.
-// =============================================================================
+// Tests for dish names (e.g. पनीर → Paneer).
 import { describe, expect, it } from 'vitest'
 import { displayItem } from './itemName'
 import { itemCounts } from './itemGroups'

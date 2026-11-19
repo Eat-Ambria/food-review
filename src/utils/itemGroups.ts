@@ -1,22 +1,6 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Helpers that put issues about the SAME dish / thing together.
-// WHY IT EXISTS
-//   One recording (or one function) often has several problems, and often
-//   several about the same dish ("Dal Makhani was cold" + "Dal Makhani too
-//   salty"). Reading them together is much easier:
-//     • groupByItem   → [{ item, category, issues[] }], items in the order they
-//                       were first mentioned, issues without an item last
-//     • itemCounts    → [{ item, category, count }] for a one-line overview
-//     • sortByItem    → same list, re-ordered so same-item issues sit together
-//   "dal makhani", "Dal Makhani" and "Dal  makhani" count as the same item.
-// USED BY
-//   pages/Issues/IssuesPage.tsx, pages/MySubmissions, pages/Recording/RecordPage.tsx
-// =============================================================================
-
+// Groups issues about the same dish or thing together.
 import { displayItem } from './itemName'
 
-// Same key for "पनीर", "Paneer" and "paneer " (via the display name).
 export const itemKey = (item: string | null | undefined) =>
   displayItem(item).toLowerCase()
 

@@ -1,3 +1,4 @@
+// Tests for the formatting helpers.
 import { describe, it, expect } from 'vitest'
 import { fmtTime } from './format'
 

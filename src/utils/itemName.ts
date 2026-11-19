@@ -1,20 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Tidies an item name for display: "पनीर" → "Paneer", "दाल मखनी" →
-//   "Dal Makhani", "khana" → "Khana", "chop" → "Chop".
-// WHY IT EXISTS
-//   The AI sometimes keeps the dish as it was heard (Hindi script, lower case),
-//   so the same dish showed up as "पनीर" and "Paneer" in two different chips.
-//   Showing every item in Roman script, Title Case, makes the list read
-//   cleanly AND lets utils/itemGroups put "पनीर" and "Paneer" together.
-//   Common dish words use their usual spelling (DISH_WORDS); anything else is
-//   transliterated letter by letter. Short all-caps words (AC, DJ) stay as is.
-//   Display only: the stored item is never changed.
-// USED BY
-//   components/ItemTag.tsx, utils/itemGroups.ts
-// =============================================================================
-
-// Usual Roman spellings of common food / venue words (Hindi script → English).
+// Shows dish names neatly in English letters (पनीर → Paneer, khana → Khana).
 const DISH_WORDS: Record<string, string> = {
   'पनीर': 'Paneer', 'दाल': 'Dal', 'मखनी': 'Makhani', 'मक्खनी': 'Makhani', 'खाना': 'Khana', 'भोजन': 'Bhojan',
   'चावल': 'Chawal', 'रोटी': 'Roti', 'नान': 'Naan', 'पराठा': 'Paratha', 'पूरी': 'Puri', 'कुलचा': 'Kulcha',
@@ -39,7 +23,6 @@ const CONS: Record<string, string> = {
 }
 const DEVANAGARI = /[ऀ-ॿ]/
 
-/** One Hindi-script word → Roman letters ("पनीर" → "paneer"). */
 function translit(word: string): string {
   const chars = [...word.replace(/़/g, '')]
   let out = ''
@@ -55,16 +38,15 @@ function translit(word: string): string {
     else if (MATRAS[c]) out += MATRAS[c]
     else if (!DEVANAGARI.test(c)) out += c
   }
-  if (/[^aeiou]a$/.test(out) && out.length > 3) out = out.slice(0, -1)   // final schwa: "मटर" → matar
+  if (/[^aeiou]a$/.test(out) && out.length > 3) out = out.slice(0, -1)
   return out
 }
 
 const titleWord = (w: string) =>
   (w.length <= 3 && w === w.toUpperCase() && /[A-Z]/.test(w)) || /[A-Z]/.test(w.slice(1))
-    ? w                                          // AC, DJ, McDonald's: keep
+    ? w
     : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
 
-/** "पनीर" → "Paneer", "dal  makhani" → "Dal Makhani". */
 export function displayItem(item: string | null | undefined): string {
   const t = (item ?? '').normalize('NFC').replace(/\s+/g, ' ').trim()
   if (!t) return ''

@@ -1,27 +1,10 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Page-level building blocks: PageHeader, Card, SectionHeader, Segmented,
-//   Switch, Alert, EmptyState and Skeleton.
-// WHY IT EXISTS
-//   Every page used to repeat its own title block, error box, empty state and
-//   "Loading…" text with slightly different spacing. These keep the rhythm of
-//   every screen identical:
-//     PageHeader   serif title + short marigold rule + one line of context +
-//                  actions on the right (align="center" for the Record page)
-//     Card         white surface, 16px radius, warm hairline, soft float shadow
-//                  (interactive → lifts on hover)
-//     Alert        inline message: info / ok / warn / danger
-//     EmptyState   icon + what is empty + what to do about it
-//     Skeleton     grey placeholders in the shape of the content to come
-// USED BY
-//   pages/*
-// =============================================================================
+// Page building blocks: page title, card, tabs, switch, alert, empty state and loading placeholders.
 import type { ReactNode } from 'react'
 import { Icon, type IconName } from '../Icon'
 
 export function PageHeader({ title, description, actions, back, align = 'left', wideActions = false }: {
   title: ReactNode; description?: ReactNode; actions?: ReactNode; back?: ReactNode; align?: 'left' | 'center'
-  wideActions?: boolean   // phones: the actions row takes the full width (e.g. 3 equal buttons)
+  wideActions?: boolean
 }) {
   const center = align === 'center'
   return (
@@ -60,7 +43,6 @@ export function SectionHeader({ title, description, actions }: { title: ReactNod
   )
 }
 
-/** Segmented control: a few mutually exclusive options in one bar. */
 export function Segmented<T extends string>({ value, onChange, options, label, className = '' }: {
   value: T; onChange: (v: T) => void; options: readonly (readonly [T, string])[]; label: string; className?: string
 }) {
@@ -133,7 +115,6 @@ export function Skeleton({ className = '' }: { className?: string }) {
   return <span aria-hidden="true" className={`skeleton block rounded-md ${className}`} />
 }
 
-/** A stack of skeleton rows inside a card, used while a list loads. */
 export function ListSkeleton({ rows = 5, label = 'Loading' }: { rows?: number; label?: string }) {
   return (
     <Card className="divide-y divide-line overflow-hidden">

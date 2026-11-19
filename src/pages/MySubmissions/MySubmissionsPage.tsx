@@ -1,22 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   "My submissions" for Recording Users: the complaints they sent, what
-//   happened to each, and the issues found, with filters.
-// WHY IT EXISTS
-//   After pressing Submit, the recorder can come back and check that each
-//   complaint was read correctly.
-//   Filters: date range (Today by default; Yesterday / 7 days / 30 days /
-//   custom), venue, category and a search over the words.
-//   Grouped by day ("Today", "Yesterday", "Mon, 16 Nov").
-//   States are shown plainly:
-//     Processing        → still being read
-//     N issues          → done
-//     Admin will check  → no clear issue was found
-//     Will retry        → reading failed for now and will be retried automatically
-//   The database (RLS) only returns the user's own recordings.
-// USED BY
-//   App.tsx route "/my-submissions"
-// =============================================================================
+// Shows a recorder the complaints they sent and the issues found, with filters.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
@@ -41,7 +23,6 @@ function statusBadge(s: MySubmission) {
   return <Badge dot>Processing</Badge>
 }
 
-// Colour of the card's left stripe: done = green, waiting/retry = amber, serious = red.
 function stripe(s: MySubmission): string {
   if (s.is_serious) return 'bg-danger'
   if (s.processing_status === 'pending_assignment' || s.processing_status === 'assigned') return 'bg-ok'
@@ -78,7 +59,6 @@ export function MySubmissionsPage() {
     if (r !== 'custom') { const d = rangeDates(r); setFrom(d.from); setTo(d.to) }
   }
 
-  // Search from the top bar arrives as ?q=… → fill the box and look back 30 days.
   const [params, setParams] = useSearchParams()
   const urlQ = params.get('q')
   useEffect(() => {
@@ -97,7 +77,6 @@ export function MySubmissionsPage() {
   }, [user, from, to])
   useEffect(() => { void load() }, [load])
 
-  // Venue / category / search are applied on the device (instant).
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return items.filter((s) => {
@@ -134,8 +113,6 @@ export function MySubmissionsPage() {
           </Button>
         } />
 
-      {/* Filters. Phone: stacked (search, date bar, venue + category).
-          Desktop: one row (search | date bar | venue | category). */}
       <div className="space-y-2">
         <div className="space-y-2 lg:flex lg:items-center lg:gap-2 lg:space-y-0">
           <SearchInput value={query} onChange={setQuery} placeholder="Search dish, guest, words…" label="Search submissions" className="lg:min-w-0 lg:flex-1" />
@@ -204,7 +181,7 @@ export function MySubmissionsPage() {
                     const who = [s.guest_name, s.function_name].filter(Boolean).join(' · ')
                     return (
                       <li key={s.id} className={`lift relative overflow-hidden rounded-2xl border bg-surface shadow-card ${s.is_serious ? 'border-danger/40' : 'border-line/80 hover:border-line-strong'}`}>
-                        {/* Left stripe = state at a glance */}
+
                         <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-[3px] ${stripe(s)}`} />
                         <button type="button" onClick={() => setOpenId(open ? null : s.id)} aria-expanded={open} className="w-full py-3.5 pl-5 pr-4 text-left">
                           <div className="flex items-center gap-2">
@@ -218,7 +195,6 @@ export function MySubmissionsPage() {
                             <Icon name="chevron" className={`size-4 shrink-0 text-faint transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
                           </div>
 
-                          {/* Where / which event */}
                           <p className="mt-1 flex items-start gap-1.5 text-sm">
                             <Icon name="pin" className="mt-0.5 size-3.5 shrink-0 text-muted" />
                             <span className="min-w-0">

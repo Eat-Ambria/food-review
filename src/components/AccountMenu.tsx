@@ -1,20 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   The account menu at the top right: an avatar button that opens the user's
-//   name and roles, a phone-notifications On/Off switch (POCs), Change PIN and
-//   Sign out.
-// WHY IT EXISTS
-//   Personal settings live in one predictable place (top right), not at the
-//   bottom of the sidebar. The notification switch applies to THIS device only
-//   (each phone or computer is turned on separately), so it shows this device's
-//   real state:
-//     on / off               → switch
-//     blocked                → how to allow it again in the browser
-//     iPhone not installed   → "Add to Home Screen" first
-//     unsupported / not set  → a short explanation
-// USED BY
-//   layouts/AppLayout.tsx (desktop top bar + phone top bar)
-// =============================================================================
+// The avatar menu at the top right: name, notification and sound switches, Change PIN, Sign out.
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -112,7 +96,6 @@ export function AccountMenu({ tone = 'light', withName = false }: { tone?: 'ligh
                 {pushErr && <p className="mt-1 pl-[26px] text-xs text-danger">{pushErr}</p>}
               </div>
 
-              {/* In-app sound (this device) */}
               <div>
                 <div className="flex items-center justify-between gap-3">
                   <span className="flex items-center gap-2.5 text-sm font-semibold">

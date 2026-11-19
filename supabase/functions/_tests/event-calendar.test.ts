@@ -1,13 +1,11 @@
-// Tests for the event matcher (supabase/functions/event-calendar/index.ts).
-// Folders starting with "_" are not deployed as Edge Functions.
-// "Today" is fixed to Tue 17 Nov 2026 in India.
+// Tests for the event matcher (which function a complaint is about).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   matchEvent, detectDates, normalize, translitWord, nameKey, hindiInitials, levenshtein, shiftOf, todayIST,
   type CalEvent, type Venue, type MatchDeps,
 } from '../event-calendar/index.ts'
 
-const NOON_IST = new Date('2026-11-17T06:30:00Z')   // 12:00 IST
+const NOON_IST = new Date('2026-11-17T06:30:00Z')
 const TODAY = '2026-11-17'
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(NOON_IST) })
@@ -16,7 +14,6 @@ afterEach(() => { vi.useRealTimers() })
 const dates = (said: string) =>
   detectDates(said, normalize(said), todayIST()).cands.map((c) => c.date).sort()
 
-// ---------------------------------------------------------------------------
 describe('detectDates', () => {
   it('reads day + month in English and Hindi', () => {
     expect(dates('15 Nov ko khana thanda tha')).toEqual(['2026-11-15'])
@@ -42,7 +39,7 @@ describe('detectDates', () => {
     expect(dates('15 tarikh')).toEqual(['2026-11-15'])
     expect(dates('१५ तारीख')).toEqual(['2026-11-15'])
     expect(dates('20 tarikh')).toEqual(['2026-10-20'])
-    expect(dates('31 tarikh')).toEqual(['2026-10-31'])   // November has no 31st
+    expect(dates('31 tarikh')).toEqual(['2026-10-31'])
   })
 
   it('"15th ko" is a date, "1st floor" is not', () => {
@@ -68,7 +65,7 @@ describe('detectDates', () => {
     expect(dates('yesterday')).toEqual(['2026-11-16'])
     expect(dates('day before yesterday')).toEqual(['2026-11-15'])
     expect(dates('sunday ko')).toEqual(['2026-11-15'])
-    expect(dates('मंगलवार')).toEqual([TODAY])               // today is Tuesday
+    expect(dates('मंगलवार')).toEqual([TODAY])
   })
 
   it('explicit flag is set only for real dates', () => {
@@ -77,7 +74,6 @@ describe('detectDates', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
 describe('name helpers', () => {
   it('transliterates Devanagari names so they compare with English', () => {
     expect(nameKey(translitWord('शर्मा'))).toBe(nameKey('Sharma'))
@@ -89,7 +85,7 @@ describe('name helpers', () => {
     expect(hindiInitials('एनपी')).toBe('np')
     expect(hindiInitials('आरके')).toBe('rk')
     expect(hindiInitials('शर्मा')).toBeNull()
-    expect(hindiInitials('ए')).toBeNull()   // one letter is not initials
+    expect(hindiInitials('ए')).toBeNull()
   })
 
   it('nameKey ignores common spelling differences', () => {
@@ -101,7 +97,7 @@ describe('name helpers', () => {
   it('levenshtein', () => {
     expect(levenshtein('kitchen', 'kitchn')).toBe(1)
     expect(levenshtein('same', 'same')).toBe(0)
-    expect(levenshtein('a', 'abcdef')).toBe(3)   // capped when lengths differ a lot
+    expect(levenshtein('a', 'abcdef')).toBe(3)
   })
 
   it('normalize lower-cases, strips punctuation, converts Hindi digits', () => {
@@ -122,9 +118,6 @@ describe('shiftOf', () => {
   })
 })
 
-// ---------------------------------------------------------------------------
-// matchEvent with a fake Calendar
-// ---------------------------------------------------------------------------
 const VENUES: Venue[] = [
   { id: 'v-ap', venue_name: 'Ambria Pushpanjali', calendar_venue_id: 'ap', sub_venues: ['Amber Lawn', 'Full Venue'],
     aliases: [{ alias: 'AP' }, { alias: 'Pushpanjali' }, { alias: 'Ambria' }] },
@@ -220,7 +213,7 @@ describe('matchEvent', () => {
     const d = deps()
     const r = await match('7 am ko ap log aaye, khana thanda tha', d)
     expect(r.venue).toBeNull()
-    expect(d.eventsOn).toHaveBeenCalledWith(TODAY, ['ap', 'am'])   // searched every venue
+    expect(d.eventsOn).toHaveBeenCalledWith(TODAY, ['ap', 'am'])
 
     const r2 = await match('AP mein dinner kharab tha')
     expect(r2.venue!.id).toBe('v-ap')
@@ -228,20 +221,20 @@ describe('matchEvent', () => {
   })
 
   it('a venue said in Hindi script or split in two words is still found', async () => {
-    // Real transcript from Sarvam: "Manaktala" came out as two Hindi words.
+
     const r = await match('आज मानक तला में function है उसमें smell आ रही है।')
     expect(r.venue!.id).toBe('v-am')
     expect(r.event!.calendar_event_id).toBe('e3')
     expect((await match('Manak Tala mein dinner mein AC band tha')).venue!.id).toBe('v-am')
-    // One Hindi word with the hidden "a": मानकतला reads as "manakatala".
+
     expect((await match('आज मानकतला के function में food में smell आई है, fix करो।')).venue!.id).toBe('v-am')
     expect((await match('पुष्पांजलि में lunch में खाना ठंडा था')).event!.calendar_event_id).toBe('e1')
   })
 
   it('guest names and function words are also matched as they sound in Hindi', async () => {
-    // "मालवीय" reads as "maalaveey", the booking says "Malviya" (hidden "a").
+
     expect((await match('14 तारीख को मालवीय जी के function में AC खराब था')).event!.calendar_event_id).toBe('e6')
-    // "लगन" is the Lagan function; no Hindi spelling had to be listed.
+
     expect((await match('14 तारीख को पुष्पांजलि में लगन में खाना ठंडा था')).event!.calendar_event_id).toBe('e6')
     expect((await match('14 tarikh ko Pushpanjali mein shaadi mein khana thanda tha')).event!.calendar_event_id).toBe('e7')
   })
@@ -278,12 +271,12 @@ describe('matchEvent', () => {
   })
 
   it('after midnight, last night counts too', async () => {
-    vi.setSystemTime(new Date('2026-11-16T20:30:00Z'))   // 02:00 IST on the 17th
+    vi.setSystemTime(new Date('2026-11-16T20:30:00Z'))
     const d = deps()
     const r = await match('Manaktala mein shaam ko khana thanda tha', d)
     expect(d.eventsOn).toHaveBeenCalledWith('2026-11-16', ['am'])
     expect(r.status).toBe('matched')
-    expect(r.event!.calendar_event_id).toBe('e4')         // last night's sundowner
+    expect(r.event!.calendar_event_id).toBe('e4')
     expect(r.date).toBe('2026-11-16')
   })
 

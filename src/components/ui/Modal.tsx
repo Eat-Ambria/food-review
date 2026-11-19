@@ -1,13 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   A simple dialog: a bottom sheet on phones, a centred card on desktop.
-// WHY IT EXISTS
-//   Add/Edit user and confirmations need a focused panel. On phones a bottom
-//   sheet keeps the buttons within thumb reach. Esc and the backdrop close it.
-//   Focus moves into the dialog when it opens and back where it was on close.
-// USED BY
-//   pages/*
-// =============================================================================
+// Pop-up dialog: a bottom sheet on phones, a centred box on desktop.
 import { useEffect, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '../Icon'
@@ -24,7 +15,7 @@ export function Modal({ open, title, description, onClose, children, footer, siz
     document.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    // Focus the first field if there is one (autoFocus handles most), else the dialog.
+
     requestAnimationFrame(() => { if (!boxRef.current?.contains(document.activeElement)) boxRef.current?.focus() })
     return () => {
       document.removeEventListener('keydown', onKey)
@@ -34,8 +25,7 @@ export function Modal({ open, title, description, onClose, children, footer, siz
   }, [open, onClose])
 
   if (!open) return null
-  // Rendered straight into <body>, so the backdrop always covers the WHOLE
-  // screen (sidebar and top bar too), whatever the page around it is doing.
+
   return createPortal(
     <div className="fade-in fixed inset-0 z-[60] flex items-end justify-center bg-navy-950/40 backdrop-blur-[2px] md:items-center md:p-6" onClick={onClose}>
       <div ref={boxRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}

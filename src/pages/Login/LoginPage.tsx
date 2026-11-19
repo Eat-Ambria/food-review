@@ -1,18 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   The sign-in screen: username + 4-digit PIN.
-// WHY IT EXISTS
-//   It is the only way into the app. The check itself happens on the server
-//   (auth-login Edge Function). This page only collects input and shows the
-//   result, including "x attempts left" and the lock message.
-//   "Keep me signed in" (on by default) keeps the session after the app is
-//   closed, and also remembers the username so it is pre-filled next time.
-//   Turn it off on a shared phone. The PIN itself is never stored by the app.
-//   Layout: one narrow centred column: mark, "Ambria | food review", headline,
-//   one line of help, then a plain white card with the form. Nothing else.
-// USED BY
-//   App.tsx route "/login"
-// =============================================================================
+// Sign-in screen (username + 4-digit PIN).
 import { useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
@@ -47,13 +33,13 @@ export function LoginPage() {
     if (!username.trim() || pin.length !== 4) { setError('Enter your username and 4-digit PIN.'); return }
     setBusy(true)
     setError(null)
-    setRememberMe(remember) // must happen before login, so the session is stored in the right place
+    setRememberMe(remember)
     const res = await login(username, pin)
     if (res.ok) {
       try {
         if (remember) localStorage.setItem(LAST_USERNAME_KEY, username.trim().toLowerCase())
         else localStorage.removeItem(LAST_USERNAME_KEY)
-      } catch { /* storage blocked: not important */ }
+      } catch { }
     }
     setBusy(false)
     if (!res.ok) {
@@ -62,19 +48,19 @@ export function LoginPage() {
         ? `${res.message} ${res.attemptsLeft} attempt${res.attemptsLeft === 1 ? '' : 's'} left before the account locks.`
         : res.message)
     }
-    // On success the <Navigate> above takes over on the next render.
+
   }
 
   return (
     <div className="relative flex min-h-full flex-col items-center justify-center px-5 py-10 pt-[max(2.5rem,env(safe-area-inset-top))]">
-      {/* White silk waves behind the page (same as inside the app). */}
+
       <svg aria-hidden="true" className="silk" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">
         <path d="M-40 760 C 240 640, 520 820, 820 700 S 1300 520, 1500 600 L 1500 960 L -40 960 Z" fill="#ffffff" fillOpacity="0.55" />
         <path d="M600 900 C 820 760, 1040 700, 1220 520 S 1420 260, 1520 230 L 1520 960 L 600 960 Z" fill="#ffffff" fillOpacity="0.45" />
       </svg>
 
       <div className="relative z-10 w-full max-w-[25rem]">
-        {/* Brand, headline, one line of help */}
+
         <header className="text-center">
           <BrandMark className="mx-auto size-12 drop-shadow-[0_8px_18px_rgb(224_162_37/0.28)]" />
           <p className="mt-3 text-[13px] font-semibold tracking-wide text-muted">
@@ -84,10 +70,8 @@ export function LoginPage() {
           <h1 className="mt-6 font-serif text-[2rem] font-normal leading-[1.12] tracking-[-0.02em] text-ink sm:text-[2.35rem]">
             Say what went wrong.<br />The right people see it.
           </h1>
-          <p className="mt-3 text-sm text-muted">Sign in with the username and PIN your admin gave you.</p>
         </header>
 
-        {/* Sign-in card */}
         <div className="mt-8 rounded-2xl border border-line/80 bg-white p-6 shadow-float sm:p-7">
           <form onSubmit={submit} className="space-y-5" noValidate>
             {!supabaseConfigured && (
@@ -111,7 +95,6 @@ export function LoginPage() {
               <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)}
                 className="size-4 cursor-pointer rounded accent-ink" />
               <span className="text-sm font-medium">Keep me signed in</span>
-              <span className="ml-auto hidden text-xs text-faint min-[380px]:inline">Untick on a shared phone</span>
             </label>
 
             {error && <Alert tone="danger">{error}</Alert>}

@@ -1,20 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Turning phone notifications (Web Push) on and off for this device.
-// WHY IT EXISTS
-//   • registerServiceWorker(): called once at app start (main.tsx).
-//   • enablePush(): asks the browser's permission (it must be called from a
-//     tap), subscribes with our public VAPID key, and saves the device in
-//     push_subscriptions (RLS: own rows only).
-//   • disablePush(): removes this device.
-//   • pushState(): what the toggle should show. It trusts ONLY this device's
-//     own subscription, never "some row exists for this user": the same person
-//     may have several devices.
-//   iPhone: push works only after "Add to Home Screen" (iOS 16.4+). That is
-//   reported as 'needs-install' so the screen can explain it.
-// USED BY
-//   main.tsx, components/AccountMenu.tsx (the On/Off switch)
-// =============================================================================
+// Turns phone notifications on or off for this device.
 import { supabase } from './supabase'
 
 const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined

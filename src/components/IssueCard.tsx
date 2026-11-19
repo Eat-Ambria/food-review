@@ -1,20 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   One issue as a row of the Issues table. Tap it to expand in place:
-//   serious keywords, location, the transcript (with this issue's own words
-//   highlighted) and the original recording.
-// WHY IT EXISTS
-//   The Issues page lists a function's problems as a table, so a POC can scan
-//   the same columns down the page:
-//     Department | Priority | Item | Issue | Reported by | Time | ▾
-//   Priority is "Serious" (red, matched an admin keyword) or "Normal". Serious
-//   rows also get a red edge on the left.
-//   On phones the same row stacks: chips on top, the issue text, then who/when.
-//   The audio link is fetched only when the row is opened (private storage,
-//   short-lived link).
-// USED BY
-//   pages/Issues/IssuesPage.tsx (inside IssueTable)
-// =============================================================================
+// Shows one issue as a table row; tap it to see the full transcript and recording.
 import { useEffect, useRef, useState } from 'react'
 import type { FeedIssue } from '../services/issueService'
 import { audioUrl } from '../services/issueService'
@@ -23,7 +7,6 @@ import { CategoryChip } from './CategoryChip'
 import { ItemTag } from './ItemTag'
 import { Spinner } from './ui/Spinner'
 
-/** Column widths, shared by the header row and every issue row (sm and up). */
 export const ISSUE_COLS = 'sm:grid sm:grid-cols-[8.5rem_6.5rem_8rem_minmax(0,1fr)_8.5rem_7.75rem_1.25rem] sm:items-center sm:gap-x-4'
 
 function Highlighted({ text, part }: { text: string; part: string | null }) {
@@ -37,8 +20,6 @@ const istDay = (iso: string) => new Date(new Date(iso).getTime() + 5.5 * 3600_00
 const shortDay = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })
 const fullStamp = (iso: string) => new Date(iso).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' })
 
-/** When it was reported. The issue is listed under its FUNCTION's day, so if it
- *  was recorded on another day, that day is shown too ("17 Nov · 11:25 am"). */
 function Reported({ issue }: { issue: FeedIssue }) {
   const otherDay = istDay(issue.created_at) !== issue.event_day
   return (
@@ -64,7 +45,7 @@ export function Priority({ serious, keywords }: { serious: boolean; keywords?: s
 
 export function IssueCard({ issue, focused = false }: { issue: FeedIssue; focused?: boolean }) {
   const [open, setOpen] = useState(false)
-  // Opened from a notification: scroll the row into view once and tint it.
+
   const rowRef = useRef<HTMLLIElement>(null)
   useEffect(() => {
     if (focused) rowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -85,7 +66,7 @@ export function IssueCard({ issue, focused = false }: { issue: FeedIssue; focuse
       {issue.is_serious && <span aria-hidden="true" className="absolute inset-y-1 left-0 w-[3px] rounded-r bg-danger" />}
       <button type="button" onClick={() => void toggle()} aria-expanded={open}
         className={`flex w-full flex-col gap-2 px-4 py-3 text-left sm:py-2.5 ${ISSUE_COLS}`}>
-        {/* Phone: chips in one line. sm+: each sits in its own column. */}
+
         <span className="flex flex-wrap items-center gap-1.5 sm:contents">
           <span className="sm:min-w-0"><CategoryChip name={issue.category} className="max-w-full justify-center sm:w-full" /></span>
           <span className={issue.is_serious ? '' : 'hidden sm:block'}><Priority serious={issue.is_serious} keywords={issue.serious_keywords} /></span>
@@ -130,7 +111,6 @@ export function IssueCard({ issue, focused = false }: { issue: FeedIssue; focuse
   )
 }
 
-/** Column titles above a function's issues (hidden on phones). */
 export function IssueTableHead() {
   return (
     <div className={`hidden rounded-lg bg-ink/[0.045] px-4 py-2.5 text-[13px] font-semibold text-ink/75 ${ISSUE_COLS}`} aria-hidden="true">

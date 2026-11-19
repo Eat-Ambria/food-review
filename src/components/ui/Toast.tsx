@@ -1,12 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   A short message that slides up at the bottom ("Saved", "PIN reset") and
-//   hides itself after 4 seconds. useToast() returns [message, show] and
-//   <Toast> renders it.
-// WHY IT EXISTS
-//   Dashboard, Users and Venues each had their own copy of the same timer and
-//   markup. On phones it sits above the bottom tab bar.
-// =============================================================================
+// A short message at the bottom ("Saved") that hides itself.
 import { useCallback, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Icon } from '../Icon'

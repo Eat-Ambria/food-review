@@ -1,37 +1,7 @@
--- =============================================================================
--- WHAT THIS FILE IS
---   Migration 14: the 5-minute background job (Supabase Cron).
---
--- WHY IT EXISTS
---   Every 5 minutes, Postgres (pg_cron) calls the process-issue function with
---   action "cron". That run:
---     1. retries recordings whose processing failed (when their retry time has
---        come) or got stuck, a few per run
---     2. deletes recordings older than the retention period (default 30 days)
---        from storage
---     3. cleans old technical logs (maintenance_cleanup below)
---   The Edge Function checks a shared secret (header x-cron-secret), so nobody
---   else can trigger it. The secret is stored in Supabase Vault (encrypted)
---   here, and as the Edge Function secret CRON_SECRET there; the two values
---   must be the same.
---   job_runs keeps one row per run (start, end, what it did), so Admin can see
---   the job is alive. A run that starts while another is still going skips itself.
---
--- HOW TO RUN (once): see docs/API_SETUP_GUIDE.md → "Phase 9". In short:
---   1. run this file
---   2. copy the secret it shows at the end into Edge Functions → Secrets → CRON_SECRET
---
--- DEPENDS ON
---   Migrations 1–13. Extensions pg_cron + pg_net (enabled below).
---
--- SAFE TO RE-RUN
---   Yes. The secret is created once, and the schedule is replaced, not duplicated.
--- =============================================================================
-
+-- Migration 14: the 5-minute background job (retries and clean-up).
 create extension if not exists pg_cron;
 create extension if not exists pg_net with schema extensions;
 
--- ---- run log -------------------------------------------------------------------
 create table if not exists public.job_runs (
   id           bigint generated always as identity primary key,
   job          text not null,
@@ -47,7 +17,6 @@ grant all on public.job_runs to service_role;
 drop policy if exists job_runs_admin_read on public.job_runs;
 create policy job_runs_admin_read on public.job_runs for select to authenticated using (public.is_admin());
 
--- Start a run unless one is already going (started < 4 min ago, not finished).
 create or replace function public.job_start(p_job text)
 returns bigint language plpgsql volatile security definer set search_path = public as $$
 declare v_id bigint;
@@ -65,7 +34,6 @@ returns void language sql volatile security definer set search_path = public as 
   update public.job_runs set finished_at = now(), ok = p_ok, stats = coalesce(p_stats, '{}'::jsonb) where id = p_id
 $$;
 
--- Old technical rows that are no longer useful.
 create or replace function public.maintenance_cleanup()
 returns jsonb language plpgsql volatile security definer set search_path = public as $$
 declare a int; b int; c int;
@@ -81,7 +49,6 @@ revoke all on function public.job_start(text), public.job_finish(bigint, boolean
 grant execute on function public.job_start(text), public.job_finish(bigint, boolean, jsonb), public.maintenance_cleanup()
   to service_role;
 
--- ---- shared secret in Vault (created once) --------------------------------------
 do $$
 begin
   if not exists (select 1 from vault.secrets where name = 'issue_desk_cron_secret') then
@@ -90,7 +57,6 @@ begin
   end if;
 end $$;
 
--- ---- schedule: every 5 minutes ---------------------------------------------------
 do $$
 begin
   if exists (select 1 from cron.job where jobname = 'issue-desk-every-5-min') then
@@ -114,6 +80,5 @@ select cron.schedule(
   $cron$
 );
 
--- ---- show the secret ONCE, to copy into Edge Functions → Secrets → CRON_SECRET ----
 select decrypted_secret as copy_this_into_CRON_SECRET
   from vault.decrypted_secrets where name = 'issue_desk_cron_secret';

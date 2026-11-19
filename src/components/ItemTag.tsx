@@ -1,16 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   The "what is this issue about" label: the dish, drink or thing the AI
-//   picked out of the recording ("Dal Makhani", "AC", "Washroom").
-// WHY IT EXISTS
-//   The first thing a POC wants to know is WHICH dish / thing has the problem,
-//   so it gets its own clearly visible tag instead of plain bold text:
-//     [fork-and-knife] Dal Makhani     → food & drink categories
-//     [tag]            AC              → everything else
-//   Shown everywhere an issue is listed, so it always looks the same.
-// USED BY
-//   components/IssueCard.tsx, pages/MySubmissions, pages/Recording/RecordPage.tsx
-// =============================================================================
+// Shows the dish or thing an issue is about (e.g. Paneer, AC) as a chip.
 import { Icon } from './Icon'
 import { displayItem } from '../utils/itemName'
 
@@ -20,8 +8,8 @@ export function ItemTag({ item, category, size = 'md', count, showOne = false, c
   item: string | null | undefined
   category?: string | null
   size?: 'sm' | 'md'
-  count?: number            // > 1 → "×2" (several problems with this item)
-  showOne?: boolean         // also show "×1" (the Issues page "Items" line)
+  count?: number
+  showOne?: boolean
   className?: string
 }) {
   if (!item) return null

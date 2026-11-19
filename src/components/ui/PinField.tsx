@@ -1,13 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   A 4-digit PIN input: four boxes on screen, one real <input> underneath.
-// WHY IT EXISTS
-//   Four separate inputs break paste, autofill and screen readers. One numeric
-//   input avoids that and opens the phone's number keypad
-//   (inputMode="numeric"). The boxes only display what was typed.
-// USED BY
-//   pages/Login, pages/ChangePin
-// =============================================================================
+// The 4-box PIN input with a blinking cursor.
 import { useId, useState } from 'react'
 
 export function PinField({ label, value, onChange, autoFocus, invalid, autoComplete = 'current-password' }: {
@@ -47,8 +38,10 @@ export function PinField({ label, value, onChange, autoFocus, invalid, autoCompl
             return (
               <div key={i}
                 className={`flex h-14 items-center justify-center rounded-lg border bg-surface transition-[border-color,box-shadow]
-                  ${invalid ? 'border-danger' : active ? 'border-ink/60 ring-[3px] ring-marigold/20' : filled ? 'border-line-strong' : 'border-line'}`}>
+                  ${invalid ? 'border-danger' : active ? 'border-ink/45 ring-[3px] ring-ink/[0.06]' : filled ? 'border-line-strong' : 'border-line'}`}>
                 {filled && <span className="size-2.5 rounded-full bg-ink" />}
+
+                {active && !filled && <span className="pin-caret h-6 w-[2px] rounded-full bg-ink" />}
               </div>
             )
           })}

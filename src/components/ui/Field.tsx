@@ -1,17 +1,8 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Text inputs, selects and the search box, styled to match the rest of the app.
-// WHY IT EXISTS
-//   Forms (Add/Edit user, filters) repeat the same label + input + hint
-//   layout. This keeps them consistent and accessible (label is linked to input).
-//   inputClass() is exported for the few inputs that need a custom layout.
-// USED BY
-//   pages/*
-// =============================================================================
+// Text inputs, dropdowns and the search box, styled the same everywhere.
 import { useId, type InputHTMLAttributes, type SelectHTMLAttributes } from 'react'
 import { Icon } from '../Icon'
 
-const BASE = 'w-full min-w-0 rounded-lg border border-line bg-surface text-ink outline-none transition-[border-color,box-shadow] placeholder:text-faint hover:border-line-strong focus:border-ink/60 focus:ring-[3px] focus:ring-marigold/20 disabled:bg-subtle disabled:text-muted aria-[invalid=true]:border-danger'
+const BASE = 'w-full min-w-0 rounded-lg border border-line bg-surface text-ink outline-none transition-[border-color,box-shadow] placeholder:text-faint hover:border-line-strong focus:border-ink/45 focus:ring-[3px] focus:ring-ink/[0.06] disabled:bg-subtle disabled:text-muted aria-[invalid=true]:border-danger'
 
 export const inputClass = (size: 'md' | 'lg' = 'md', extra = '') =>
   `${BASE} ${size === 'lg' ? 'h-12 px-4 text-[15px]' : 'h-10 px-3 text-sm'} ${extra}`
@@ -43,7 +34,6 @@ export function SelectField({ label, children, ...rest }: SelectHTMLAttributes<H
   )
 }
 
-/** Compact select without a visible label, for filter bars. */
 export function FilterSelect({ label, children, className = '', ...rest }: SelectHTMLAttributes<HTMLSelectElement> & { label: string }) {
   return (
     <select aria-label={label} {...rest} className={`${inputClass('md', 'cursor-pointer font-medium')} ${CHEVRON} ${className}`}>
@@ -52,7 +42,6 @@ export function FilterSelect({ label, children, className = '', ...rest }: Selec
   )
 }
 
-/** Search box with a leading icon and a clear button. */
 export function SearchInput({ value, onChange, placeholder, label, className = '', size = 'md' }: {
   value: string; onChange: (v: string) => void; placeholder: string; label: string; className?: string; size?: 'md' | 'lg'
 }) {
@@ -71,7 +60,6 @@ export function SearchInput({ value, onChange, placeholder, label, className = '
   )
 }
 
-/** Checkbox / radio row with a title and an optional description. */
 export function ChoiceRow({ type = 'checkbox', checked, onChange, title, description, name, disabled, trailing }: {
   type?: 'checkbox' | 'radio'; checked: boolean; onChange: (checked: boolean) => void
   title: React.ReactNode; description?: React.ReactNode; name?: string; disabled?: boolean; trailing?: React.ReactNode

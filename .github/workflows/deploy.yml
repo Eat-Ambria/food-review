@@ -1,12 +1,4 @@
-# =============================================================================
-# WHAT THIS FILE IS
-#   GitHub Actions workflow: builds the app and publishes it to GitHub Pages.
-# WHY IT EXISTS
-#   Every push to main (or the "Run workflow" button) installs, runs the unit
-#   tests, builds with the repo's path (/food-review/) and deploys dist/.
-#   A failing test stops the deploy. The three VITE_ values are browser-safe
-#   public keys kept as repository secrets; private keys live only in Supabase.
-# =============================================================================
+# Builds the app, runs the tests and publishes it to GitHub Pages on every push to main.
 name: Deploy to GitHub Pages
 on:
   push:
@@ -35,7 +27,7 @@ jobs:
       - run: npx vitest run
       - run: npm run build
         env:
-          VITE_BASE: /food-review/          # must match the repository name
+          VITE_BASE: /food-review/
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
           VITE_VAPID_PUBLIC_KEY: ${{ secrets.VITE_VAPID_PUBLIC_KEY }}

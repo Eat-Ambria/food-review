@@ -1,32 +1,4 @@
--- =============================================================================
--- WHAT THIS FILE IS
---   Migration 11: a user can have MORE THAN ONE role (e.g. Recording User + POC).
---
--- WHY IT EXISTS
---   Real staff wear several hats: a manager may record complaints AND be the POC
---   for a department, and an admin may also be a POC.
---   • New column app_users.roles (text[]) holds every role the user has.
---   • The old app_users.role column stays, as the "primary" role, and is kept in
---     sync automatically: admin > poc > recorder. Existing code and policies
---     that read `role` keep working, and nothing breaks halfway through.
---   • has_role('poc') is the new permission check. is_admin() now uses it.
---   • admin_update_user / admin_list_users / auth_create_app_user now work with
---     the roles list.
---   • Safety rules are unchanged: an admin can't remove their own admin role,
---     and at least one active admin always remains.
---
--- USED BY
---   Every permission check; src/services/userAdminService.ts; admin-users,
---   transcribe-audio and process-issue functions.
---
--- DEPENDS ON
---   Migrations 1–10.
---
--- SAFE TO RE-RUN
---   Yes.
--- =============================================================================
-
--- ---- 1. roles column, filled from the current single role ---------------------
+-- Migration 11: lets a user have more than one role.
 alter table public.app_users add column if not exists roles text[];
 update public.app_users set roles = array[role] where roles is null or cardinality(roles) = 0;
 
@@ -36,7 +8,6 @@ alter table public.app_users add constraint app_users_roles_check
 
 create index if not exists app_users_roles_idx on public.app_users using gin (roles);
 
--- ---- 2. keep role (primary) and roles in sync --------------------------------
 create or replace function public.primary_role(p_roles text[])
 returns text language sql immutable as $$
   select case when 'admin' = any(p_roles) then 'admin'
@@ -47,13 +18,13 @@ $$;
 create or replace function public.sync_user_roles()
 returns trigger language plpgsql as $$
 begin
-  -- Old-style write that only sets `role` → roles follows it.
+
   if new.roles is null or cardinality(new.roles) = 0 then
     new.roles := array[new.role];
   elsif tg_op = 'UPDATE' and new.role is distinct from old.role and new.roles = old.roles then
     new.roles := array[new.role];
   end if;
-  -- Remove duplicates, keep a stable order.
+
   new.roles := array(select r from unnest(array['admin', 'recorder', 'poc']) r where r = any(new.roles));
   new.role := public.primary_role(new.roles);
   return new;
@@ -63,7 +34,6 @@ drop trigger if exists trg_sync_user_roles on public.app_users;
 create trigger trg_sync_user_roles before insert or update on public.app_users
   for each row execute function public.sync_user_roles();
 
--- ---- 3. permission helpers ------------------------------------------------------
 create or replace function public.has_role(p_role text)
 returns boolean language sql stable security definer set search_path = public as $$
   select exists (select 1 from public.app_users where id = auth.uid() and is_active and p_role = any(roles))
@@ -77,7 +47,6 @@ $$;
 revoke all on function public.has_role(text) from public, anon;
 grant execute on function public.has_role(text) to authenticated;
 
--- ---- 4. creating users with several roles ------------------------------------------
 drop function if exists public.auth_create_app_user(uuid, text, text, text, text, text, uuid);
 create or replace function public.auth_create_app_user(
   p_id uuid, p_name text, p_username text, p_role text,
@@ -93,7 +62,6 @@ end $$;
 revoke all on function public.auth_create_app_user(uuid, text, text, text, text, text, uuid, text[]) from public, anon, authenticated;
 grant execute on function public.auth_create_app_user(uuid, text, text, text, text, text, uuid, text[]) to service_role;
 
--- bootstrap_admin called the old 7-argument version; repoint it.
 create or replace function public.bootstrap_admin(p_auth_user_id uuid, p_name text, p_username text)
 returns text language plpgsql volatile security definer set search_path = public as $$
 begin
@@ -105,7 +73,6 @@ begin
 end $$;
 revoke all on function public.bootstrap_admin(uuid, text, text) from public, anon, authenticated;
 
--- ---- 5. admin list / update with roles ---------------------------------------------
 drop function if exists public.admin_list_users();
 create or replace function public.admin_list_users()
 returns table (

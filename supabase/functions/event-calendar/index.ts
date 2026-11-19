@@ -1,70 +1,10 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Edge Function "event-calendar": the app's only connection to the existing
-//   Ambria Event Calendar (READ-ONLY), plus the logic that works out WHICH
-//   booking a spoken complaint is about.
-//
-// WHY IT EXISTS
-//   The recorder never picks an event by hand. The event is identified from
-//   what was SAID, checked against the Calendar:
-//     1. date   – NOT SAID → today (staff record on the day of the function;
-//                 between midnight and 5 AM, last night counts too).
-//                 Said: explicit ("15 Nov", "15 नवंबर", "15/11"), relative
-//                 ("aaj", "kal", "parso", "yesterday"), or a weekday.
-//                 "kal / कल" means both yesterday and tomorrow in Hindi, so the
-//                 tense decides: "tha / hua / gaya" → yesterday,
-//                 "hoga / hogi" → tomorrow.
-//     2. venue  – admin-managed aliases (AP / Pushpanjali / …), or a lawn/hall
-//                 that belongs to only one venue ("Amber Lawn" → AP).
-//     3. the day's bookings at that venue are fetched and SCORED on what was
-//        said: guest name (Devanagari is transliterated, so "शर्मा" matches
-//        "Sharma"), function type (shaadi/sagai/birthday…), shift
-//        (lunch/raat/shaam/subah) and lawn/hall.
-//     4. decision – one clear winner → matched. A tie (e.g. lunch and dinner at
-//        the same venue with nothing said to tell them apart) → "ambiguous"
-//        with the candidates. It is NEVER guessed; Admin resolves it later.
-//   Guest and function names in the result are copied from the booking, not
-//   invented from speech.
-//
-//   Calendar rules followed (docs/EVENT_CALENDAR_API.md):
-//     deleted_at=is.null always; kill switch on → no bookings; GET only;
-//     multi-day bookings (end_date, Villa check-in/out) are matched too.
-//
-//   Actions (POST JSON):
-//     { action: "categories" }                          Admin → venue import
-//     { action: "events", date, calendar_venue_ids? }   bookings on one day
-//     { action: "match", transcript, hint_date? }       identify the event from speech
-//                                                       (hint_date: day to use when none is said)
-//
-// ONE FILE ON PURPOSE
-//   Everything (matcher + handler) is in this file so it can be pasted into the
-//   Supabase dashboard editor as-is. It is also importable by the unit tests
-//   (supabase/functions/_tests): Deno is only touched through `deno` below,
-//   and vite.config.ts maps the jsr: import to the npm package.
-//
-// USED BY
-//   src/services/eventCalendarService.ts, the process-issue function, the tests
-//
-// DEPENDS ON
-//   Secrets: EVENT_CALENDAR_API_URL, EVENT_CALENDAR_API_KEY, ALLOWED_ORIGINS
-//   Auto: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-//   Tables: app_users, venues, venue_aliases, api_usage_log
-//
-// DASHBOARD SETTING
-//   Verify JWT: OFF. The function checks the caller's session itself.
-// =============================================================================
-
+// Server function that reads the Event Calendar and works out which function a complaint is about.
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
-// Deno only exists in the Edge runtime; under the tests (Node) these are undefined.
 type DenoLike = { env: { get(k: string): string | undefined }; serve(h: (r: Request) => Promise<Response> | Response): unknown }
 const deno = (globalThis as unknown as { Deno?: DenoLike }).Deno
 const denoEnv = (k: string) => deno?.env.get(k)
 
-// ===========================================================================
-// MATCHER — reads date, venue, guest, function and shift from a transcript and
-// scores the Calendar bookings against them. Pure code (no Deno), unit-tested.
-// ===========================================================================
 export interface CalEvent {
   id: string; venue_id: string; title: string | null; status: string | null; date: string
   end_date: string | null; time: string | null; shift: string | null; sub_venue: string | null
@@ -74,18 +14,13 @@ export interface CalEvent {
 export interface Venue { id: string; venue_name: string; calendar_venue_id: string | null; sub_venues: string[]; aliases: { alias: string }[] }
 
 export interface MatchDeps {
-  /** Active venues with their aliases. */
+
   venues: Venue[]
   killSwitchOn: () => Promise<boolean>
-  /** Bookings on one day at these Calendar venue ids (all venues when empty). */
+
   eventsOn: (date: string, calendarVenueIds: string[]) => Promise<CalEvent[]>
 }
 
-// ---------------------------------------------------------------------------
-// Text helpers
-// ---------------------------------------------------------------------------
-/** lower-case, letters/digits of any script, single spaces, padded with spaces. */
-/** Devanagari digits (०-९) → 0-9, so "१५ तारीख" reads like "15 तारीख". */
 export const asciiDigits = (t: string) => t.replace(/[०-९]/g, (d) => String('०१२३४५६७८९'.indexOf(d)))
 
 export function normalize(text: string): string {
@@ -110,7 +45,6 @@ export function levenshtein(a: string, b: string): number {
   return dp[b.length]
 }
 
-// Devanagari → rough Latin, only for comparing names ("शर्मा" ≈ "sharma").
 const VOWELS: Record<string, string> = { 'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'ee', 'उ': 'u', 'ऊ': 'oo', 'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au', 'ऋ': 'ri' }
 const MATRAS: Record<string, string> = { 'ा': 'aa', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo', 'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ृ': 'ri', 'ॉ': 'o', 'ॅ': 'e' }
 const CONS: Record<string, string> = {
@@ -122,23 +56,23 @@ const CONS: Record<string, string> = {
 export function translitWord(w: string): string {
   if (!/[ऀ-ॿ]/.test(w)) return w
   let out = ''
-  const chars = [...w.replace(/़/g, '')]          // drop nukta
+  const chars = [...w.replace(/़/g, '')]
   for (let i = 0; i < chars.length; i++) {
     const c = chars[i]
     const next = chars[i + 1]
     if (CONS[c]) {
       out += CONS[c]
-      if (next === '्') { i++; continue }            // virama: no vowel
+      if (next === '्') { i++; continue }
       if (next && MATRAS[next]) { out += MATRAS[next]; i++; continue }
-      out += 'a'                                      // inherent vowel
+      out += 'a'
     } else if (VOWELS[c]) out += VOWELS[c]
     else if (c === 'ं' || c === 'ँ') out += 'n'
     else if (MATRAS[c]) out += MATRAS[c]
   }
-  if (/[^aeiou]a$/.test(out) && out.length > 3) out = out.slice(0, -1)   // final schwa: "राहुल" → rahul
+  if (/[^aeiou]a$/.test(out) && out.length > 3) out = out.slice(0, -1)
   return out
 }
-// English letters spoken in Hindi script ("एनपी" = NP, "आरके" = RK). Longest first.
+
 const HINDI_LETTERS: [string, string][] = ([
   ['डब्ल्यू', 'w'], ['क्यू', 'q'], ['एक्स', 'x'], ['वाई', 'y'], ['जेड', 'z'], ['ज़ेड', 'z'],
   ['एच', 'h'], ['एफ', 'f'], ['एल', 'l'], ['एम', 'm'], ['एन', 'n'], ['आर', 'r'], ['एस', 's'],
@@ -146,7 +80,6 @@ const HINDI_LETTERS: [string, string][] = ([
   ['टी', 't'], ['वी', 'v'], ['यू', 'u'], ['ओ', 'o'], ['ई', 'e'], ['आई', 'i'], ['ए', 'a'],
 ] as [string, string][]).sort((a, b) => b[0].length - a[0].length)
 
-/** "एनपी" → "np" if the whole word is made of spelled letters (2+), else null. */
 export function hindiInitials(w: string): string | null {
   let rest = w, out = ''
   while (rest) {
@@ -158,13 +91,9 @@ export function hindiInitials(w: string): string | null {
   return out.length >= 2 ? out : null
 }
 
-/** Spelling-insensitive key: aa→a, ee→i, oo→u, w→v, ph→f. */
 export const nameKey = (s: string) => s.toLowerCase().replace(/aa/g, 'a').replace(/ee|ii/g, 'i').replace(/oo/g, 'u')
   .replace(/w/g, 'v').replace(/ph/g, 'f').replace(/[^a-z]/g, '')
 
-// ---------------------------------------------------------------------------
-// Dates (India time)
-// ---------------------------------------------------------------------------
 export function todayIST(): Date {
   const ist = new Date(Date.now() + 5.5 * 3600_000)
   return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()))
@@ -211,19 +140,17 @@ export function detectDates(raw: string, t: string, today: Date): { cands: DateC
     const d = resolveDayMonth(Number(m[1]), MONTHS[m[2]], today, m[3] ? Number(m[3]) : undefined)
     if (d) add(d, 3, `"${m[0].trim()}"`)
   }
-  // Month first ("Nov 15"): not "may"/"mar", which are everyday words ("may 2 log").
+
   const monthFirst = Object.keys(MONTHS).filter((m) => m !== 'may' && m !== 'mar').sort((a, b) => b.length - a.length).join('|')
   for (const m of t.matchAll(new RegExp(` (${monthFirst}) (\\d{1,2})(?:st|nd|rd|th)? `, 'gu'))) {
     const d = resolveDayMonth(Number(m[2]), MONTHS[m[1]], today)
     if (d) add(d, 3, `"${m[0].trim()}"`)
   }
-  // "15 तारीख", "15 tarikh/tareekh", "15 date", "15th" (no month said) → that day
-  // of THIS month, or of last month if that day hasn't come yet (complaints are
-  // about the past).
+
   const DAY_WORDS = 'तारीख|तारीक|तारिख|tarikh|tareekh|tareek|tarik|tarekh|date'
   const dayOnly = (day: number) => {
     let d = resolveDayMonth(day, today.getUTCMonth(), today, today.getUTCFullYear())
-    // Not yet this month, or not a real date this month (31 in a 30-day month) → last month.
+
     if (!d || d.getTime() > today.getTime()) {
       d = resolveDayMonth(day, (today.getUTCMonth() + 11) % 12, today, today.getUTCMonth() === 0 ? today.getUTCFullYear() - 1 : today.getUTCFullYear())
     }
@@ -233,13 +160,13 @@ export function detectDates(raw: string, t: string, today: Date): { cands: DateC
     const d = dayOnly(Number(m[1]))
     if (d) add(d, 3, `"${m[0].trim()}"`)
   }
-  // "15th ko / 15th wale / 15th ke function" = a date; "1st floor" is not.
+
   const AFTER_ORDINAL = 'ko|को|wale|wala|वाले|वाला|ke|के|ka|का|ki|की|date|tarikh|event|function|फंक्शन'
   for (const m of t.matchAll(new RegExp(` (\\d{1,2})(?:st|nd|rd|th) (?=(?:${AFTER_ORDINAL}) )`, 'gu'))) {
     const d = dayOnly(Number(m[1]))
     if (d) add(d, 3, `"${m[0].trim()}"`)
   }
-  // 15/11 or 15/11/2026, 15-11-2026, 15.11.26. "2-3 log" / "3.4" (no year) are NOT dates.
+
   for (const m of asciiDigits(raw).matchAll(/\b(\d{1,2})(?:\/(\d{1,2})(?:\/(\d{2,4}))?|([.-])(\d{1,2})\4(\d{2,4}))\b/g)) {
     const month = Number(m[2] ?? m[5]), year = m[3] ?? m[6]
     const d = resolveDayMonth(Number(m[1]), month - 1, today, year ? Number(year) : undefined)
@@ -253,9 +180,7 @@ export function detectDates(raw: string, t: string, today: Date): { cands: DateC
   else if (has(t, 'yesterday')) add(addDays(today, -1), 2, '"yesterday"')
   if (hasAny(t, ['aaj', 'aj', 'आज', 'today', 'tonight'])) add(today, 2, '"aaj"')
   if (has(t, 'tomorrow')) add(addDays(today, 1), 2, '"tomorrow"')
-  // Hindi "kal" = yesterday OR tomorrow, "parso" = 2 days either way. The tense
-  // decides: past ("tha/hua/gaya") → ONLY the past day; future ("hoga") → ONLY
-  // the future day. Only when the tense is unclear are both days checked (past first).
+
   const tensePast = past > future, tenseFuture = future > past
   if (hasAny(t, ['kal', 'kl', 'कल'])) {
     if (!tenseFuture) add(addDays(today, -1), 1.5, tensePast ? '"kal" (past tense → yesterday)' : '"kal"')
@@ -271,9 +196,6 @@ export function detectDates(raw: string, t: string, today: Date): { cands: DateC
   return { cands: out, explicit }
 }
 
-// ---------------------------------------------------------------------------
-// Function type + shift words
-// ---------------------------------------------------------------------------
 const FUNCTION_WORDS: Record<string, string[]> = {
   wedding: ['wedding', 'shaadi', 'shadi', 'शादी', 'vivah', 'विवाह', 'marriage', 'phere', 'pheras', 'फेरे', 'baraat', 'बारात', 'वेडिंग'],
   engagement: ['engagement', 'sagai', 'सगाई', 'ring ceremony', 'roka', 'रोका', 'एंगेजमेंट'],
@@ -292,13 +214,12 @@ const FUNCTION_WORDS: Record<string, string[]> = {
 }
 const SHIFT_WORDS: Record<string, string[]> = {
   Morning: ['morning', 'subah', 'सुबह', 'breakfast', 'नाश्ता', 'nashta'],
-  // "din wale / दिन वाले / day time" = the daytime function (vs the night one)
-  // ("din ka / din ke" are NOT here: "us din ka function" just means "that day's function")
+
   Lunch: ['lunch', 'लंच', 'dopahar', 'दोपहर', 'din wale', 'din wala', 'दिन वाले', 'दिन वाला', 'day time', 'daytime'],
   Sundowner: ['sundowner', 'shaam', 'शाम', 'evening', 'hi tea', 'high tea'],
   Dinner: ['dinner', 'डिनर', 'raat', 'रात', 'night'],
 }
-// Honorifics are not part of a name; very common surnames alone don't identify a guest.
+
 const TITLES = new Set(['mr', 'mrs', 'ms', 'miss', 'dr', 'shri', 'sri', 'smt', 'sir', 'madam', 'ji'])
 const COMMON_SURNAMES = new Set(['singh', 'kumar', 'sharma', 'gupta', 'agarval', 'agraval', 'jain', 'verma', 'varma',
   'devi', 'kaur', 'khan', 'yadav', 'mehta', 'shah', 'arora', 'kapur', 'kapor', 'malhotra', 'chauhan', 'sethi', 'bansal', 'garg', 'mital', 'mitall', 'goyal', 'gupt'])
@@ -311,18 +232,15 @@ export function shiftOf(e: CalEvent): string | null {
 }
 export const functionNameOf = (e: CalEvent) => (e.event_type === 'Other' ? (e.event_type_other || 'Other') : (e.event_type || null))
 
-// ---------------------------------------------------------------------------
-// The matcher
-// ---------------------------------------------------------------------------
 export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: string | null = null) {
   const { killSwitchOn, eventsOn } = deps
   const t = normalize(transcript)
-  // 2+ letters, so initials like "NP" / "RK" count too (they must match exactly).
+
   const words = t.trim().split(' ')
-  // Initials written apart: "N P Singh", "N. P.", "एन पी" → one token "np".
+
   const letterOf = (w: string): string | null => {
     if (/^[a-z]$/.test(w)) return w
-    if (w === 'के' || w === 'जी') return null     // everyday Hindi words ("Singh जी के"), not K / G
+    if (w === 'के' || w === 'जी') return null
     const h = HINDI_LETTERS.find(([d]) => d === w)
     return h ? h[1] : null
   }
@@ -336,40 +254,28 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
   }
   const latinTokens = [
     ...words.map(translitWord).map(nameKey),
-    ...words.map(hindiInitials).filter((x): x is string => Boolean(x)),   // "एनपी" → "np"
+    ...words.map(hindiInitials).filter((x): x is string => Boolean(x)),
     ...joinedInitials,
   ].filter((x) => x.length >= 2)
   const today = todayIST()
 
-  // ---- venue ---------------------------------------------------------------
   const venues = deps.venues
   const subCount = new Map<string, number>()
   for (const v of venues) for (const s of new Set(v.sub_venues.map((x) => normalize(x).trim()))) subCount.set(s, (subCount.get(s) ?? 0) + 1)
 
-  // Short aliases (≤ 3 letters, e.g. "AP") count only when written in CAPITALS
-  // as a separate word and not right after a number, so "7 am" or "ap log"
-  // never selects a venue.
   const shortAliasSaid = (alias: string) => {
     const a = alias.trim()
     if (!/^[A-Za-z]{1,3}$/.test(a)) return false
-    // Built from regex literals (not a template string) so the \p / \d escapes survive.
+
     const before = /(?<![\p{L}\p{N}])(?<!\d\s?)/u.source
     const after = /(?![\p{L}\p{N}])/u.source
     return new RegExp(before + a.toUpperCase() + after, 'u').test(transcript)
   }
 
-  // Everyday words that also appear in some venue names ("Ambria Events",
-  // "Wedding Services"). They never count as a near-miss spelling of a venue.
   const COMMON = new Set(['event', 'events', 'decor', 'design', 'services', 'service', 'cuisine', 'tender', 'villa', 'wedding'])
 
-  // A name as it SOUNDS, without spaces: "Manaktala", "मानक तला", "Manak Tala"
-  // all become "manaktala". Speech-to-text often splits a venue name in two or
-  // writes it in Hindi script, so 1–3 neighbouring spoken words are joined and
-  // compared this way too.
   const soundKey = (s: string) => nameKey(normalize(s).trim().split(' ').map(translitWord).join(''))
-  // Hindi script hides the short "a" inside words: "मानकतला" reads as
-  // "manakatala", not "manaktala". So the comparison also uses the name with
-  // every "a" removed ("mnktl"); only for names of 6+ letters (see below).
+
   const skeleton = (k: string) => k.replace(/a/g, '')
   const spokenKeys = new Set<string>()
   const spokenSkeletons = new Set<string>()
@@ -384,8 +290,7 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
     const k = soundKey(name)
     return k.length >= 6 && (spokenKeys.has(k) || (skeleton(k).length >= 4 && spokenSkeletons.has(skeleton(k))))
   }
-  // A list word ("haldi", "din wale") said as written OR as it sounds in Hindi
-  // script ("हल्दी"), so the Hindi spellings don't have to be listed one by one.
+
   const wordSaid = (w: string) => has(t, w) || (soundKey(w).length >= 4 && spokenKeys.has(soundKey(w)))
   const saidAny = (list: string[]) => list.some(wordSaid)
 
@@ -396,14 +301,14 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
   for (const v of venues) {
     const allNames = [v.venue_name, ...v.aliases.map((a) => a.alias)]
     const shortSaid = allNames.find((n) => /^[A-Za-z]{1,3}$/.test(n.trim()) && shortAliasSaid(n))
-    // Single everyday words ("Events") are never usable as a venue name on their own.
+
     const names = allNames.filter((n) => !/^[A-Za-z]{1,3}$/.test(n.trim())).map((n) => normalize(n).trim())
       .filter((n) => n && !COMMON.has(n))
-    // Longest name said for this venue ("ambria pushpanjali" beats "ambria").
+
     const exact = shortSaid ? normalize(shortSaid).trim()
       : names.filter((n) => has(t, n)).sort((x, y) => y.length - x.length)[0]
     if (exact) { exactHits.push({ venue: v, via: `said "${exact}"`, strength: 3, phrase: exact }); continue }
-    // Said in Hindi script or split in two ("मानक तला" = Manaktala). 6+ letters, so short words can't collide.
+
     const spoken = [...names].sort((x, y) => y.length - x.length).find(saidAloud)
     if (spoken) { exactHits.push({ venue: v, via: `said "${spoken}" (as spoken)`, strength: 3, phrase: spoken }); continue }
     const sub = v.sub_venues.map((s) => normalize(s).trim()).find((s) => s.length >= 4 && subCount.get(s) === 1 && (has(t, s) || saidAloud(s)))
@@ -412,35 +317,29 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
       .find((n) => t.trim().split(' ').some((tok) => tok.length >= 5 && !COMMON.has(tok) && levenshtein(tok, n) === 1))
     if (near) nearHits.push({ venue: v, via: `sounds like "${near}"`, strength: 1, phrase: near })
   }
-  // A shorter name inside a longer one that was also said is not a separate
-  // venue: if "Ambria" is AP's alias and someone says "Ambria Manaktala", it is AM.
+
   const exactKept = exactHits.filter((h) => !exactHits.some((o) => o !== h && o.phrase.length > h.phrase.length
     && (' ' + o.phrase + ' ').includes(' ' + h.phrase + ' ')))
-  // Near-miss spellings are only a last resort, when nothing matched exactly.
+
   const venueHits = exactKept.length || subHits.length ? [...exactKept, ...subHits] : nearHits
   const linked = venues.filter((v) => v.calendar_venue_id)
   const searchVenueIds = (venueHits.length ? venueHits.map((h) => h.venue) : linked)
     .map((v) => v.calendar_venue_id).filter((x): x is string => Boolean(x))
 
-  // ---- dates ---------------------------------------------------------------
   const { cands, explicit } = detectDates(transcript, t, today)
   const dateSaid = cands.length > 0
-  // Nothing said about the date → it is TODAY (staff record on the day of the
-  // function). Exception: a recording made after midnight and before 5 AM may be
-  // about last night's function (dinners run late), so yesterday counts equally.
+
   const lateNight = new Date(Date.now() + 5.5 * 3600_000).getUTCHours() < 5
   const assumed = lateNight
     ? [{ date: iso(today), weight: 1.5, source: 'not said (today)' },
        { date: iso(addDays(today, -1)), weight: 1.5, source: 'not said (last night, recorded after midnight)' }]
     : [{ date: iso(today), weight: 2, source: 'not said (today, the recording day)' }]
-  // hintDate: when matching ONE issue of a recording (process-issue), the
-  // recording's date is used if the issue's own words don't say a date.
+
   const hinted = hintDate ? [{ date: hintDate, weight: 2, source: 'same day as the rest of the recording' }] : null
   const dates = (dateSaid ? cands : (hinted ?? assumed)).sort((a, b) => b.weight - a.weight).slice(0, 4)
 
   if (await killSwitchOn()) return { status: 'calendar_paused', reasons: ['The Event Calendar is paused (kill switch on).'] }
 
-  // ---- candidates + scoring -------------------------------------------------
   const venueByCal = new Map(venues.map((v) => [v.calendar_venue_id, v]))
   const scored: { e: CalEvent; on: string; score: number; reasons: string[]; specific: boolean; guest: boolean }[] = []
   for (const d of dates) {
@@ -453,24 +352,20 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
       const vh = venueHits.find((h) => h.venue.calendar_venue_id === e.venue_id)
       if (vh) { score += vh.strength; reasons.push(`venue: ${vh.via}`) }
 
-      // Guest name: the more of it was said, the stronger the match.
-      //   full name ("NP Singh")          → +6
-      //   a distinctive part ("Baweja")   → +4
-      //   only a common surname ("Singh") → +1 (shared by many guests)
       const guestTokens = (e.guest_name ?? '').split(/[^A-Za-z]+/).map(nameKey)
         .filter((x) => x.length >= 2 && !TITLES.has(x))
       const said = (gt: string) => latinTokens.some((tok) => tok === gt
         || (gt.length >= 5 && levenshtein(tok, gt) <= 1)
-        || (gt.length >= 5 && skeleton(gt).length >= 3 && skeleton(tok) === skeleton(gt)))   // "maalaveey" = "malviya" (hidden "a")
-        || (gt.length >= 5 && spokenKeys.has(gt))                                            // said in two parts
+        || (gt.length >= 5 && skeleton(gt).length >= 3 && skeleton(tok) === skeleton(gt)))
+        || (gt.length >= 5 && spokenKeys.has(gt))
       const hit = guestTokens.filter(said)
-      const distinctive = guestTokens.some((g) => g.length < 3 || !COMMON_SURNAMES.has(g))   // initials count as distinctive
+      const distinctive = guestTokens.some((g) => g.length < 3 || !COMMON_SURNAMES.has(g))
       if (guestTokens.length && hit.length === guestTokens.length && distinctive) {
         score += 6; specific = true; guest = true; reasons.push(`guest name "${e.guest_name}"`)
       } else if (hit.some((h) => h.length >= 3 && !COMMON_SURNAMES.has(h))) {
         score += 4; specific = true; guest = true; reasons.push(`guest name "${e.guest_name}"`)
       } else if (hit.length) {
-        score += hit.length === guestTokens.length ? 2 : 1     // e.g. guest "Sharma", and "Sharma" was said
+        score += hit.length === guestTokens.length ? 2 : 1
         reasons.push(`part of guest name "${hit.join(' ')}"`)
       }
 
@@ -507,7 +402,7 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
     date_source: dateSaid ? (explicit ? 'explicit' : 'relative') : hinted ? 'from_recording' : 'assumed_today',
     venue,
     venue_candidates: venueHits.map((h) => ({ id: h.venue.id, name: h.venue.venue_name, via: h.via })),
-    candidates: scored.slice(0, 10).map(summary),   // up to 10, so the recorder can pick when it is unclear
+    candidates: scored.slice(0, 10).map(summary),
   }
 
   if (!scored.length) {
@@ -517,10 +412,7 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
         : `No booking found ${lateNight ? 'today or last night' : 'today'}${venueHits.length ? ' at this venue' : ''}. If it was another day, say the day (e.g. "kal").`] }
   }
   const [top, second] = scored
-  // Accept only a clear winner:
-  //   • the ONLY booking that fits (at the venue said, or the only one in the
-  //     whole company that day when no venue was said), or
-  //   • ahead of the next booking by a real margin.
+
   if (scored.length === 1) {
     const why = venueHits.length || top.specific ? top.reasons : [...top.reasons, 'the only booking that day at any venue']
     return { ...base, status: 'matched', event: { ...summary(top), reasons: why }, date: top.on, reasons: why }
@@ -534,10 +426,6 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
       : 'The venue was not mentioned and there is more than one booking. Say the venue name (e.g. Pushpanjali).'] }
 }
 
-
-// ===========================================================================
-// EDGE FUNCTION — HTTP handler, Calendar lookups
-// ===========================================================================
 const SUPABASE_URL = denoEnv('SUPABASE_URL')!
 const SERVICE_KEY = denoEnv('SUPABASE_SERVICE_ROLE_KEY')!
 const CAL_URL = (denoEnv('EVENT_CALENDAR_API_URL') ?? '').replace(/\/+$/, '')
@@ -549,9 +437,6 @@ const EVENT_FIELDS = [
   'event_type', 'event_type_other', 'guest_name', 'pax', 'check_in_date', 'check_out_date', 'venue_name',
 ].join(',')
 
-// ---------------------------------------------------------------------------
-// HTTP helpers
-// ---------------------------------------------------------------------------
 const allowedOrigins = (denoEnv('ALLOWED_ORIGINS') ?? '')
   .split(',').map((o) => o.trim()).filter(Boolean)
 
@@ -574,7 +459,6 @@ function reply(origin: string | null, status: number, body: unknown) {
   })
 }
 
-/** GET from the Calendar's REST API with a timeout. Throws on any non-2xx. */
 async function calGet<T = unknown[]>(path: string): Promise<T> {
   const ctrl = new AbortController()
   const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
@@ -595,10 +479,9 @@ async function killSwitchOn(): Promise<boolean> {
   return ks[0]?.value === 'on'
 }
 
-/** Bookings on one day (single-day + multi-day + villa stays), cancelled excluded. */
 async function eventsOn(date: string, venueIds: string[]): Promise<CalEvent[]> {
   const venueFilter = venueIds.length ? `&venue_id=in.(${venueIds.join(',')})` : ''
-  // neq alone would also drop rows whose status is empty, so keep those explicitly.
+
   const base = `events?select=${EVENT_FIELDS}&deleted_at=is.null&or=(status.is.null,status.neq.Cancelled)${venueFilter}`
   const [sameDay, spanning, villa] = await Promise.all([
     calGet<CalEvent[]>(`${base}&date=eq.${date}&order=time.asc&limit=200`),
@@ -609,9 +492,6 @@ async function eventsOn(date: string, venueIds: string[]): Promise<CalEvent[]> {
   return [...sameDay, ...spanning, ...villa].filter((e) => (seen.has(e.id) ? false : (seen.add(e.id), true)))
 }
 
-// ---------------------------------------------------------------------------
-// Handler
-// ---------------------------------------------------------------------------
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const VENUE_ID_RE = /^[a-z0-9_]{1,20}$/
 
@@ -622,10 +502,8 @@ deno?.serve(async (req: Request) => {
 
   const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
 
-  // ---- Caller must be an active app user ------------------------------------
   const token = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '')
-  // Server-to-server: other functions (process-issue, cron) call with the
-  // service-role key. That key never leaves Supabase.
+
   let me: { id: string | null; role: string; is_active: boolean } | null = null
   if (token && token === SERVICE_KEY) {
     me = { id: null, role: 'system', is_active: true }
@@ -633,7 +511,7 @@ deno?.serve(async (req: Request) => {
     const { data: caller } = await db.auth.getUser(token)
     if (!caller?.user) return reply(origin, 401, { error: 'Please sign in again.' })
     const { data: row } = await db.from('app_users').select('id, role, roles, is_active').eq('id', caller.user.id).maybeSingle()
-    // role = primary role (admin first), so the admin check below stays correct with several roles.
+
     me = row
   }
   if (!me?.is_active) return reply(origin, 403, { error: 'Not allowed.' })

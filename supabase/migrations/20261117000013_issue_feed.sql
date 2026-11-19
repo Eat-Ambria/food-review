@@ -1,36 +1,4 @@
--- =============================================================================
--- WHAT THIS FILE IS
---   Migration 13: the database side of the Issues page, My submissions and the
---   Admin dashboard.
---
--- WHY IT EXISTS
---   Decision: EVERY POC sees EVERY issue (read-only). There is no assignment or
---   resolve workflow; the page simply shows what came up, where, at which event.
---   • issues_feed(): one row per issue, already joined with its venue, its
---     event (from the Calendar), the transcript, the audio and the recorder's
---     name, so the page can group Date → Venue → Event in one call.
---       Admin / POC → all issues.  Recording User → only their own.
---     (app_users is not readable by POCs directly, so this function supplies
---     the recorder's name.)
---   • Storage: POCs and Admin may open recordings (to listen). Recorders still
---     only see their own files.
---   • admin_attention(): recordings Admin should look at (processing failed, no
---     issue found, or the event is not certain).
---   • admin_set_submission_event(): Admin picks the right booking from the
---     candidates the matcher found. It is copied onto the recording and its
---     issues, and nothing is typed by hand.
---
--- USED BY
---   src/services/issueService.ts → pages/Issues, pages/MySubmissions, pages/AdminDashboard
---
--- DEPENDS ON
---   Migrations 1–12.
---
--- SAFE TO RE-RUN
---   Yes.
--- =============================================================================
-
--- ---- POCs read everything (rows), recorders their own, Admin all -----------
+-- Migration 13: database side of the Issues page, My submissions and the dashboard.
 drop policy if exists submissions_select on public.submissions;
 create policy submissions_select on public.submissions for select to authenticated
   using (public.is_admin() or public.has_role('poc') or (submitted_by = auth.uid() and public.is_active_user()));
@@ -43,12 +11,10 @@ create policy issues_select on public.issues for select to authenticated
                where s.id = issues.submission_id and s.submitted_by = auth.uid() and public.is_active_user())
   );
 
--- ---- Storage: POCs and Admin can listen to any recording ---------------------
 drop policy if exists recordings_select_staff on storage.objects;
 create policy recordings_select_staff on storage.objects for select to authenticated
   using (bucket_id = 'recordings' and (public.is_admin() or public.has_role('poc')));
 
--- ---- The feed ----------------------------------------------------------------------
 drop function if exists public.issues_feed(date, date, uuid, text);
 create or replace function public.issues_feed(
   p_from date, p_to date, p_venue_id uuid default null, p_category text default null)
@@ -102,7 +68,6 @@ begin
      limit 2000;
 end $$;
 
--- ---- Admin: recordings that need a look -------------------------------------------
 drop function if exists public.admin_attention();
 create or replace function public.admin_attention()
 returns table (
@@ -129,7 +94,6 @@ begin
      limit 200;
 end $$;
 
--- ---- Admin: choose the right booking for an uncertain recording ---------------
 create or replace function public.admin_set_submission_event(p_submission_id uuid, p_calendar_event_id text)
 returns jsonb language plpgsql volatile security definer set search_path = public as $$
 declare
@@ -142,7 +106,6 @@ begin
   select * into v_sub from public.submissions where id = p_submission_id for update;
   if not found then return jsonb_build_object('ok', false, 'error', 'Recording not found.'); end if;
 
-  -- Only a booking the matcher actually found may be chosen (no free typing).
   select c into v_cand from jsonb_array_elements(coalesce(v_sub.event_match->'candidates', '[]'::jsonb)) c
    where c->>'calendar_event_id' = p_calendar_event_id limit 1;
   if v_cand is null then return jsonb_build_object('ok', false, 'error', 'That booking is not one of the candidates.'); end if;
@@ -157,7 +120,6 @@ begin
            'status', 'matched', 'event', v_cand, 'chosen_by_admin', auth.uid(), 'chosen_at', now())
    where id = p_submission_id;
 
-  -- Issues of this recording that had no event of their own get this one.
   update public.issues
      set calendar_event_id = v_cand->>'calendar_event_id',
          venue_id = coalesce(venue_id, nullif(v_cand->>'venue_id', '')::uuid),

@@ -1,34 +1,8 @@
--- =============================================================================
--- WHAT THIS FILE IS
---   Migration 16: "serious" complaints. Admin-managed keywords; a matching
---   complaint is flagged and every POC gets a WhatsApp message.
---
--- WHY IT EXISTS
---   Some problems can't wait for someone to open the app (fire, injury, a gas
---   leak, a fight…). Admin keeps a keyword list (Hindi and English). When a
---   submitted complaint contains one, process-issue:
---     • marks the submission serious (is_serious, serious_keywords)
---     • queues one WhatsApp message per POC (notification_queue, channel
---       'whatsapp', unique dedupe_key, so never twice) and sends it via
---       Whapi.Cloud, the same service the attendance "Aria" bot uses
---     • the bell / phone push title also starts with "Serious"
---   Matching is on whole words, so "aag" does not match inside "aage".
---
--- USED BY
---   supabase/functions/process-issue, src/pages/Alerts/AlertsPage.tsx,
---   issues_feed (Issues page badge), Admin dashboard
---
--- DEPENDS ON
---   Migrations 1–15.
---
--- SAFE TO RE-RUN
---   Yes.
--- =============================================================================
-
+-- Migration 16: serious-issue keywords and WhatsApp alerts.
 create table if not exists public.alert_keywords (
   id          uuid primary key default gen_random_uuid(),
   keyword     text not null check (length(trim(keyword)) between 2 and 60),
-  -- lower-case, single-spaced; used for matching and uniqueness
+
   keyword_normalized text generated always as (lower(regexp_replace(trim(keyword), '\s+', ' ', 'g'))) stored,
   created_by  uuid references public.app_users(id) on delete set null,
   created_at  timestamptz not null default now(),
@@ -45,8 +19,6 @@ alter table public.submissions add column if not exists is_serious boolean not n
 alter table public.submissions add column if not exists serious_keywords text[];
 create index if not exists submissions_serious_idx on public.submissions (created_at desc) where is_serious;
 
--- ---- Bell/push title says "Serious" for serious complaints ---------------------
--- Same as migration 15, with the title prefix.
 create or replace function public.enqueue_new_issue_notifications(p_submission_id uuid)
 returns int language plpgsql volatile security definer set search_path = public as $$
 declare
@@ -105,7 +77,6 @@ end $$;
 revoke all on function public.enqueue_new_issue_notifications(uuid) from public, anon, authenticated;
 grant execute on function public.enqueue_new_issue_notifications(uuid) to service_role;
 
--- ---- Issues feed: same as migration 13, plus is_serious / serious_keywords -----
 drop function if exists public.issues_feed(date, date, uuid, text);
 create or replace function public.issues_feed(
   p_from date, p_to date, p_venue_id uuid default null, p_category text default null)

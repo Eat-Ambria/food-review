@@ -1,31 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   The CSV import logic: read the file, build the preview, generate unique
-//   usernames, flag duplicates, then send the approved rows to the server.
-// WHY IT EXISTS
-//   The Admin uploads a staff list (at minimum a "Name" column) instead of
-//   creating 100 accounts by hand. The rules:
-//   • Only "Name" is required. Mobile Number / Email / Username / Role are
-//     optional and are read when present (header case and spacing don't matter).
-//   • Usernames: "Rahul Sharma" → rahul.sharma. If taken (in the database or
-//     earlier in the same file), the next free number is added: rahul.sharma2…
-//   • Same name twice in the file → WARNING, both kept. They may be two
-//     different people, so the admin decides.
-//   • Name already in the database → WARNING and UNTICKED by default. This is
-//     what makes re-uploading the same CSV safe (no duplicate accounts).
-//   • A CSV that says "Admin" is NOT given admin. It is imported as a Recording
-//     User with a warning, and the admin must pick Admin by hand.
-//   • If the file has Department / Status columns (e.g. an HR export), the
-//     admin can import only some departments and skip Inactive staff.
-//     Filtered-out rows are listed as Skipped in the results.
-//   • Blank lines are skipped. Rows with problems (no name, bad username)
-//     cannot be ticked until they are fixed.
-//   The server checks everything again. This file only makes the preview useful.
-// USED BY
-//   pages/UserManagement/ImportUsersPage.tsx
-// DEPENDS ON
-//   papaparse, services/userAdminService.ts
-// =============================================================================
+// Reads the users CSV, checks it, makes usernames, then creates the users.
 import Papa from 'papaparse'
 import type { Role } from '../types/auth'
 import type { ImportResultRow, NewUserInput, PreviewRow } from '../types/users'
@@ -36,14 +9,13 @@ export const MAX_ROWS = 2000
 const CHUNK_SIZE = 25
 const USERNAME_RE = /^[a-z0-9]+(\.[a-z0-9]+)*$/
 
-// Header spellings we accept → our field name.
 const HEADER_MAP: Record<string, keyof RawRow> = {
   name: 'name', fullname: 'name', employeename: 'name', employee: 'name',
   mobilenumber: 'mobile', mobile: 'mobile', mobileno: 'mobile', phone: 'mobile', phonenumber: 'mobile', contact: 'mobile',
   email: 'email', emailid: 'email', emailaddress: 'email', mail: 'email',
   username: 'username', userid: 'username', login: 'username',
   role: 'role', userrole: 'role',
-  // Used only to FILTER which rows to import (e.g. only "Venue Sales", skip Inactive).
+
   department: 'department', dept: 'department', team: 'department',
   status: 'status', employeestatus: 'status',
 }
@@ -60,7 +32,6 @@ export interface ParseResult {
   columnsFound: string[]
 }
 
-/** Read and check the file. Does not touch the database. */
 export function parseCsvFile(file: File): Promise<ParseResult> {
   return new Promise((resolve) => {
     if (!/\.csv$/i.test(file.name) && file.type !== 'text/csv') {
@@ -71,11 +42,11 @@ export function parseCsvFile(file: File): Promise<ParseResult> {
       resolve({ rows: [], lineNumbers: [], columnsFound: [], error: 'File is larger than 1 MB. Split it into smaller files.' })
       return
     }
-    // Read as UTF-8 text first (keeps Hindi names intact), then parse the text.
+
     file.text().then((text) => Papa.parse<Record<string, string>>(text, {
       header: true,
-      skipEmptyLines: false,          // keep blanks so we can report them by line number
-      transformHeader: (h) => h.toLowerCase().replace(/[^a-z]/g, ''), // also strips Excel's invisible BOM
+      skipEmptyLines: false,
+      transformHeader: (h) => h.toLowerCase().replace(/[^a-z]/g, ''),
       complete: (res) => {
         const headers = (res.meta.fields ?? [])
         const mapped = headers.map((h) => HEADER_MAP[h]).filter(Boolean)
@@ -93,9 +64,9 @@ export function parseCsvFile(file: File): Promise<ParseResult> {
             if (key && typeof v === 'string' && !r[key]) r[key] = v.trim()
           }
           rows.push(r)
-          lineNumbers.push(i + 2) // +1 for header, +1 for 1-based
+          lineNumbers.push(i + 2)
         })
-        // Papaparse adds one empty record for the file's final newline; drop trailing blanks.
+
         while (rows.length && isBlank(rows[rows.length - 1])) { rows.pop(); lineNumbers.pop() }
         if (rows.length === 0) {
           resolve({ rows, lineNumbers, columnsFound: headers, error: 'The file has a header but no rows.' })
@@ -117,10 +88,9 @@ function isBlank(r: RawRow): boolean {
   return !r.name && !r.mobile && !r.email && !r.username && !r.role
 }
 
-/** "Rahul  Sharma" → "rahul.sharma"; "Dr. R.K. Singh" → "dr.r.k.singh". Returns '' if nothing usable (e.g. Devanagari only). */
 export function usernameFromName(name: string): string {
   return name
-    .normalize('NFKD').replace(/[̀-ͯ]/g, '')   // é → e
+    .normalize('NFKD').replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
@@ -131,7 +101,6 @@ export function usernameFromName(name: string): string {
     .replace(/\.+$/, '')
 }
 
-/** First free username: base, base2, base3… */
 function uniqueUsername(base: string, taken: Set<string>): string {
   if (!taken.has(base)) return base
   for (let n = 2; ; n++) if (!taken.has(`${base}${n}`)) return `${base}${n}`
@@ -140,7 +109,7 @@ function uniqueUsername(base: string, taken: Set<string>): string {
 function mapRole(raw: string | undefined, fallback: Role): { role: Role; note?: string } {
   const v = (raw ?? '').trim().toLowerCase()
   if (!v) return { role: fallback }
-  // HR job levels (staff/manager/supervisor) are not app roles; they all record issues.
+
   if (['recorder', 'recording user', 'recording', 'user', 'staff', 'employee', 'manager', 'supervisor'].includes(v)) return { role: 'recorder' }
   if (['poc', 'point of contact'].includes(v)) return { role: 'poc' }
   if (v === 'admin' || v === 'administrator') {
@@ -149,11 +118,8 @@ function mapRole(raw: string | undefined, fallback: Role): { role: Role; note?: 
   return { role: fallback, note: `Unknown role "${raw}". Using the default role.` }
 }
 
-// ---- Department / status filter ---------------------------------------------
-
 export interface ExcludedRow { lineNumber: number; name: string; reason: string }
 
-/** Distinct, non-empty departments in the file with their row counts (for the filter). */
 export function departmentsIn(parsed: ParseResult): { name: string; count: number }[] {
   const counts = new Map<string, number>()
   for (const r of parsed.rows) {
@@ -165,11 +131,6 @@ export function departmentsIn(parsed: ParseResult): { name: string; count: numbe
 
 export const fileHasStatus = (parsed: ParseResult) => parsed.rows.some((r) => r.status?.trim())
 
-/**
- * Keeps only rows in the chosen departments (null = all) and, optionally,
- * drops rows whose Status column says Inactive. Everything removed is
- * reported as Skipped in the results, with the reason.
- */
 export function filterParsed(
   parsed: ParseResult,
   opts: { departments: Set<string> | null; skipInactive: boolean },
@@ -193,7 +154,6 @@ export function filterParsed(
 
 const normName = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
 
-/** Builds the first version of the preview. */
 export function buildPreview(
   parsed: ParseResult,
   existing: { usernames: Set<string>; namesToUsernames: Map<string, string[]> },
@@ -233,7 +193,7 @@ export function buildPreview(
     return {
       index: i, lineNumber, name, username, usernameWasGenerated: generated, role,
       mobile_number: r.mobile?.trim() || null, email,
-      // Already in the database by name → skipped unless the admin ticks it.
+
       include: parseErrors.length === 0 && !existingMatch,
       state: 'ready', parseErrors, parseNotes, messages: [],
     }
@@ -241,15 +201,11 @@ export function buildPreview(
   return revalidate(rows, existing)
 }
 
-/**
- * Recomputes every row's state and messages. Called after every admin edit
- * (username, role, tick-box), so the preview is always accurate.
- */
 export function revalidate(
   rows: PreviewRow[],
   existing: { usernames: Set<string>; namesToUsernames: Map<string, string[]> },
 ): PreviewRow[] {
-  // Count names and usernames among rows that are not blank.
+
   const nameLines = new Map<string, number[]>()
   const usernameCount = new Map<string, number>()
   for (const r of rows) {
@@ -291,8 +247,7 @@ export function revalidate(
 
     const state = errors.length ? 'error' : warnings.length ? 'warning' : 'ready'
     return {
-      // include is the admin's intent and is kept as-is; rows in 'error' are
-      // simply not imported (see runImport), and come back ticked once fixed.
+
       ...r, state,
       messages: [
         ...errors.map((text) => ({ text, level: 'error' as const })),
@@ -302,10 +257,6 @@ export function revalidate(
   })
 }
 
-/**
- * Sends ticked rows to the server in chunks of 25 and returns one result line
- * per row in the file (imported / skipped / failed + reason).
- */
 export async function runImport(
   rows: PreviewRow[],
   excluded: ExcludedRow[],

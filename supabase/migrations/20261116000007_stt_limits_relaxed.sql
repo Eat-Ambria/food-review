@@ -1,37 +1,8 @@
--- =============================================================================
--- WHAT THIS FILE IS
---   Migration 7: changes the transcription limits from "usage caps" to
---   "anti-spam only".
---
--- WHY IT EXISTS
---   Real usage: 4–5 functions a day and many complaints per function, so a
---   daily cap or "5 per 15 min" would block genuine work. The goal is only to
---   stop rapid-fire sending:
---     • at least 20 seconds between two NEW recordings from the same user
---       (a real complaint takes longer than that to speak)
---     • at most 20 new recordings per 15 minutes (spam backstop)
---     • NO daily cap (0 = off; it can be switched on later if ever needed)
---   Unchanged: a chunk is never paid for twice, and a limited recording stays
---   on the phone and is transcribed automatically when allowed.
---   Settings (change any time, no deploy):
---     update app_settings set value = '30' where key = 'stt_min_gap_seconds';
---
--- USED BY
---   supabase/functions/transcribe-audio (via stt_reserve_chunk)
---
--- DEPENDS ON
---   Migration 6 (transcription_chunks, stt_* functions).
---
--- SAFE TO RE-RUN
---   Yes.
--- =============================================================================
-
+-- Migration 7: relaxes the transcription limits to anti-spam only.
 insert into public.app_settings (key, value, description) values
   ('stt_min_gap_seconds', '20', 'Minimum seconds between two NEW recordings from one user (anti-spam)')
 on conflict (key) do nothing;
 
--- Raise the window limit and switch off the daily cap, but only if they still
--- have migration 6's defaults (never overwrite a value an admin chose).
 update public.app_settings set value = '20',
        description = 'New recordings one user may transcribe per window (anti-spam backstop)'
  where key = 'stt_max_recordings_per_window' and value #>> '{}' = '5';
@@ -39,12 +10,6 @@ update public.app_settings set value = '0',
        description = 'Minutes of audio one user may transcribe per day (India time). 0 = no limit'
  where key = 'stt_max_minutes_per_day' and value #>> '{}' = '30';
 
--- -----------------------------------------------------------------------------
--- stt_reserve_chunk: same as migration 6, plus the minimum-gap rule, and a
--- daily cap of 0 now means "off".
--- Returns {status:'cached'|'busy'|'go'|'limited', …}; for limited:
---   reason 'gap' | 'window' | 'daily', retry_after (timestamptz)
--- -----------------------------------------------------------------------------
 create or replace function public.stt_reserve_chunk(
   p_user_id uuid, p_client_id uuid, p_chunk_index int, p_audio_seconds numeric)
 returns jsonb language plpgsql volatile security definer set search_path = public as $$
@@ -61,10 +26,9 @@ declare
   v_day_start  timestamptz := (date_trunc('day', now() at time zone 'Asia/Kolkata')) at time zone 'Asia/Kolkata';
   v_id         uuid;
 begin
-  -- One user at a time: two tabs can't both slip past the limits.
+
   perform pg_advisory_xact_lock(hashtext('stt:' || p_user_id::text));
 
-  -- 1. Seen this exact chunk before?
   select * into v_row from public.transcription_chunks
    where client_submission_id = p_client_id and chunk_index = p_chunk_index;
   if found then
@@ -82,13 +46,10 @@ begin
     return jsonb_build_object('status', 'go', 'id', v_row.id);
   end if;
 
-  -- 2. Limits apply only to a NEW recording. Later chunks and retries of a
-  --    started recording always go through.
   if not exists (select 1 from public.transcription_chunks where client_submission_id = p_client_id) then
 
-    -- 2a. Minimum gap since this user's previous new recording.
     if v_gap > 0 then
-      -- A recording's start = its FIRST chunk (retries of later chunks don't count).
+
       select max(first_at) into v_last from (
         select min(created_at) as first_at from public.transcription_chunks
          where user_id = p_user_id and created_at > now() - interval '1 day'
@@ -101,7 +62,6 @@ begin
       end if;
     end if;
 
-    -- 2b. Spam backstop: N new recordings per window.
     if v_max_recs > 0 then
       select count(*), min(first_at) into v_recent, v_oldest from (
         select min(created_at) as first_at from public.transcription_chunks
@@ -115,7 +75,6 @@ begin
       end if;
     end if;
 
-    -- 2c. Optional daily cap (0 = off).
     if v_max_min > 0 then
       select coalesce(sum(audio_seconds), 0) into v_today_sec
         from public.transcription_chunks

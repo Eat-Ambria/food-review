@@ -1,15 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   A small bar that says "A new version is available, Reload" after a deploy.
-// WHY IT EXISTS
-//   An installed app (PWA) can stay open for days, so staff would keep using an
-//   old version after an update. Every build has a unique id (vite.config.ts →
-//   __BUILD_ID__ and version.json). This checks version.json every 10 minutes
-//   and when the app comes back to the foreground. If the id differs, it offers
-//   a reload. It never reloads by itself, so a half-recorded complaint is never lost.
-// USED BY
-//   App.tsx
-// =============================================================================
+// Tells the user a new version is out and reloads to it.
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 import { refreshApp } from '../lib/refreshApp'
@@ -20,7 +9,7 @@ export function UpdateNotice() {
   const [available, setAvailable] = useState(false)
 
   useEffect(() => {
-    if (import.meta.env.DEV) return          // no version.json while developing
+    if (import.meta.env.DEV) return
     let stopped = false
     const check = async () => {
       if (document.visibilityState !== 'visible') return
@@ -28,7 +17,7 @@ export function UpdateNotice() {
         const res = await fetch(`${import.meta.env.BASE_URL}version.json?t=${Date.now()}`, { cache: 'no-store' })
         const { build } = await res.json()
         if (!stopped && build && build !== __BUILD_ID__) setAvailable(true)
-      } catch { /* offline: try later */ }
+      } catch { }
     }
     void check()
     const id = setInterval(check, 10 * 60_000)

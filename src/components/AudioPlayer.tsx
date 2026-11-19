@@ -1,14 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   A compact play/pause + seek bar for a recorded audio Blob.
-// WHY IT EXISTS
-//   The browser's built-in <audio controls> looks different on every phone,
-//   and on Chrome it shows "0:00 / Infinity" for webm recordings (they carry no
-//   length). We already know the real length from the recorder, so this
-//   player uses that value.
-// USED BY
-//   pages/Recording/RecordPage.tsx
-// =============================================================================
+// Plays a recording with a play/pause button and a seek bar.
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { fmtTime } from '../utils/format'
@@ -31,7 +21,7 @@ export function AudioPlayer({ blob, durationSec }: { blob: Blob; durationSec: nu
     const a = audioRef.current
     if (!a) return
     if (a.paused) {
-      try { await a.play() } catch { /* autoplay rules: user tapped, so this should succeed */ }
+      try { await a.play() } catch { }
     } else a.pause()
   }
 
@@ -56,7 +46,7 @@ export function AudioPlayer({ blob, durationSec }: { blob: Blob; durationSec: nu
         className="flex size-9 shrink-0 items-center justify-center rounded-full bg-ink text-white transition-colors hover:bg-navy-700">
         <Icon name={playing ? 'pause' : 'play'} className="size-4" strokeWidth={playing ? 2.4 : 0} fill={playing ? 'none' : 'currentColor'} />
       </button>
-      {/* Track: a thin bar with a marigold fill; the real range input sits on top (invisible) for touch, keyboard and screen readers. */}
+
       <div className="relative flex h-6 flex-1 items-center">
         <div className="h-1 w-full overflow-hidden rounded-full bg-line-strong/70">
           <div className="h-full rounded-full bg-marigold" style={{ width: `${pct}%` }} />

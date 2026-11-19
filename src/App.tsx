@@ -1,19 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   The app's route map: which URL shows which screen, and who may open it.
-// WHY IT EXISTS
-//   It keeps every route and its role rule in one readable place.
-//     /login        anyone
-//     /change-pin   any signed-in user (forced while on default PIN)
-//     /record       Recording User + Admin
-//     /issues       POC + Admin: every issue, grouped date → venue → event
-//     /my-submissions Recording User (+ Admin): own complaints
-//     /admin        Admin
-//     /admin/users  Admin: user management (+ /import for CSV)
-//     /admin/venues Admin: venues + aliases (import from Event Calendar)
-// USED BY
-//   main.tsx
-// =============================================================================
+// Decides which screen opens for which URL, and who is allowed to open it.
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { RequireAuth } from './routes/RequireAuth'

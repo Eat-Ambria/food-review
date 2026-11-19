@@ -1,33 +1,13 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   The app's own notification sound: a loud service-bell "ding-dong-ding" for
-//   a new issue, and a siren + bells for a SERIOUS one. Plus the On/Off choice.
-//   This is an EXTRA on top of the phone's own notification sound (which always
-//   plays, public/sw.js): iPhone only lets a web app make sound shortly after a
-//   tap, so this cannot be the only alert. Web apps cannot change the phone's sound.
-// WHY IT EXISTS
-//   When the app is open, the phone often does not sound for a push, so the
-//   app plays its own sound. The sounds are generated with the Web Audio API
-//   (no audio files to download).
-//   Browsers only allow sound after the person has tapped something on the
-//   page. iPhone is strict about it: only a real tap (touchend / click) counts,
-//   a short silent sound must be played at that moment, and audio is switched
-//   off again ("interrupted") whenever the app goes to the background. So
-//   EVERY tap re-unlocks audio if it is not running, not just the first one.
-//   The On/Off choice is per device (localStorage); it defaults to On.
-// USED BY
-//   components/NotificationBell.tsx (plays), components/AccountMenu.tsx (switch)
-// =============================================================================
-
+// Plays the in-app notification sound, and stores the sound On/Off choice.
 const KEY = 'issue-desk-sound'
 let ctx: AudioContext | null = null
-let out: AudioNode | null = null        // master chain: gain → limiter → speakers
+let out: AudioNode | null = null
 
 export function soundEnabled(): boolean {
   try { return localStorage.getItem(KEY) !== 'off' } catch { return true }
 }
 export function setSoundEnabled(on: boolean): void {
-  try { localStorage.setItem(KEY, on ? 'on' : 'off') } catch { /* storage blocked: stays on */ }
+  try { localStorage.setItem(KEY, on ? 'on' : 'off') } catch { }
 }
 
 function audio(): AudioContext | null {
@@ -36,11 +16,11 @@ function audio(): AudioContext | null {
       const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
       ctx = new Ctx()
     }
-    if (ctx.state !== 'running') void ctx.resume().catch(() => {})   // "suspended" or iPhone's "interrupted"
+    if (ctx.state !== 'running') void ctx.resume().catch(() => {})
     if (!out) {
-      // Loud but clean on small phone speakers: boost, then a limiter so it never distorts.
+
       const master = ctx.createGain()
-      master.gain.value = 2.4       // loud; the limiter below keeps it clean
+      master.gain.value = 2.4
       const limiter = ctx.createDynamicsCompressor()
       limiter.threshold.value = -6
       limiter.knee.value = 4
@@ -54,8 +34,6 @@ function audio(): AudioContext | null {
   } catch { return null }
 }
 
-// Unlock audio on every tap while it is not running (browser autoplay rules).
-// A one-sample silent buffer is played in the tap itself: iPhone needs that.
 if (typeof window !== 'undefined') {
   const unlock = () => {
     const ac = audio()
@@ -65,15 +43,11 @@ if (typeof window !== 'undefined') {
       src.buffer = ac.createBuffer(1, 1, 22050)
       src.connect(ac.destination)
       src.start(0)
-    } catch { /* ignore */ }
+    } catch { }
   }
   for (const type of ['touchend', 'click', 'keydown']) window.addEventListener(type, unlock, { passive: true })
 }
 
-/**
- * A bell-like note: a pure tone plus two quieter overtones, struck hard and
- * ringing out. Sounds like a hotel service bell rather than a beep.
- */
 function bell(ac: AudioContext, freq: number, start: number, dur: number, peak: number) {
   for (const [mult, level] of [[1, 1], [2.76, 0.35], [5.4, 0.12]] as const) {
     const osc = ac.createOscillator()
@@ -89,7 +63,6 @@ function bell(ac: AudioContext, freq: number, start: number, dur: number, peak: 
   }
 }
 
-/** A rising-falling siren sweep (for SERIOUS). */
 function sweep(ac: AudioContext, start: number, dur: number, peak: number) {
   const osc = ac.createOscillator()
   const gain = ac.createGain()
@@ -106,20 +79,15 @@ function sweep(ac: AudioContext, start: number, dur: number, peak: number) {
   osc.stop(start + dur + 0.02)
 }
 
-/**
- * Tuned for phone speakers (loudest around 1–2.5 kHz):
- *   normal:  a service-bell "ding-dong-ding" (~1.4 s)
- *   serious: three siren sweeps followed by two sharp bells (~2.8 s)
- */
 export function playNotificationSound(kind: 'normal' | 'serious' = 'normal'): void {
   if (!soundEnabled()) return
   const ac = audio()
   if (!ac) return
-  // If audio is still waking up (e.g. the app just came back to the front), play once it runs.
+
   if (ac.state !== 'running') {
     ac.resume().then(() => { if (ac.state === 'running') schedule(ac, kind) }).catch(() => {})
   } else schedule(ac, kind)
-  try { navigator.vibrate?.(kind === 'serious' ? [400, 150, 400, 150, 400, 150, 400] : [200, 80, 200]) } catch { /* not supported */ }
+  try { navigator.vibrate?.(kind === 'serious' ? [400, 150, 400, 150, 400, 150, 400] : [200, 80, 200]) } catch { }
 }
 
 function schedule(ac: AudioContext, kind: 'normal' | 'serious') {
@@ -129,8 +97,8 @@ function schedule(ac: AudioContext, kind: 'normal' | 'serious') {
     bell(ac, 1975, t + 1.95, 0.5, 1)
     bell(ac, 1975, t + 2.25, 0.6, 1)
   } else {
-    bell(ac, 1318.5, t, 0.9, 1)          // E6  ding
-    bell(ac, 1046.5, t + 0.28, 0.9, 1)   // C6  dong
-    bell(ac, 1568, t + 0.56, 1.2, 1)     // G6  ding (rings out)
+    bell(ac, 1318.5, t, 0.9, 1)
+    bell(ac, 1046.5, t + 0.28, 0.9, 1)
+    bell(ac, 1568, t + 0.56, 1.2, 1)
   }
 }

@@ -1,31 +1,8 @@
--- =============================================================================
--- WHAT THIS FILE IS
---   Migration 4: makes the "easy PIN" rule an on/off setting.
---
--- WHY IT EXISTS
---   The user wants staff to be able to choose ANY 4-digit PIN (1111, 1234…).
---   Easy PINs are now allowed by default. app_settings.pin_block_easy_pins
---   can switch the old rule back on without any code change.
---   0000 is ALWAYS refused as a new PIN: it is everyone's default, so keeping
---   it would make the forced first-login change meaningless.
---   The "new PIN must differ from the current PIN" rule is also removed; the
---   0000 check already covers the first-login case.
---
--- USED BY
---   change_my_pin() (migration 3) calls pin_problem().
---
--- DEPENDS ON
---   Migrations 1–3.
---
--- SAFE TO RE-RUN
---   Yes.
--- =============================================================================
-
+-- Migration 4: makes the "easy PIN" rule an on/off setting.
 insert into public.app_settings (key, value, description) values
   ('pin_block_easy_pins', 'false', 'true = refuse PINs like 1111 or 1234 when users choose a new PIN')
 on conflict (key) do nothing;
 
--- Was IMMUTABLE. Now it reads a setting, so it must be STABLE.
 create or replace function public.pin_problem(p_pin text)
 returns text language plpgsql stable security definer set search_path = public as $$
 begin
@@ -49,7 +26,6 @@ end $$;
 
 revoke all on function public.pin_problem(text) from public, anon, authenticated;
 
--- change_my_pin without the "must differ from current PIN" rule.
 create or replace function public.change_my_pin(p_current_pin text, p_new_pin text)
 returns jsonb language plpgsql volatile security definer set search_path = public, extensions as $$
 declare

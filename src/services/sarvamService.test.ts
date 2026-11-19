@@ -1,3 +1,4 @@
+// Tests for transcription.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const invoke = vi.fn()
@@ -77,7 +78,7 @@ describe('transcribe', () => {
       const assertion = expect(p).rejects.toMatchObject({ retryable: true, partial: { total: 1 } })
       await vi.runAllTimersAsync()
       await assertion
-      expect(invoke).toHaveBeenCalledTimes(3) // 1 try + 2 auto-retries
+      expect(invoke).toHaveBeenCalledTimes(3)
     } finally {
       vi.useRealTimers()
     }

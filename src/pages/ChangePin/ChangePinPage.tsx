@@ -1,16 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   The Change PIN screen. It is forced on first login (default PIN 0000) and
-//   is optional afterwards.
-// WHY IT EXISTS
-//   Every imported user starts with 0000, which everyone knows. The guard in
-//   RequireAuth blocks every other page until this has been completed.
-//   The rules (any 4 digits except 0000; easy PINs like 1234 can be blocked
-//   via app_settings.pin_block_easy_pins) are enforced in SQL by
-//   change_my_pin(). The checks here only give faster feedback.
-// USED BY
-//   App.tsx route "/change-pin"
-// =============================================================================
+// Screen to change the PIN (forced on first login).
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'

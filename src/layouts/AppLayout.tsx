@@ -1,24 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   The frame around every signed-in page: navigation, the user menu and the
-//   notification bell.
-// WHY IT EXISTS
-//   • Desktop: a fixed navy sidebar in two groups, ordered by how often each is used:
-//       Work   → Record, My submissions, Issues
-//       Admin  → Dashboard, Users, Venues, Serious alerts   (admins only)
-//     The active page gets a lighter pill, a marigold edge and a marigold icon.
-//     A thin marigold thread curves across the bottom of the sidebar.
-//   • Background: warm porcelain with slow white "silk" waves.
-//   • Desktop top bar: a search box (opens Issues, or My submissions for
-//     recorders, with the words filled in; "/" focuses it), the bell (POCs) and
-//     the account menu (name, phone-notifications switch, Change PIN, Sign out).
-//   • Phone top bar: ☰ menu + brand + bell + account menu. ☰ slides the same
-//     navy sidebar in from the left (closes on a link, the backdrop, ✕ or Esc).
-//     There is no bottom tab bar, so the page gets the whole screen.
-//   • Links depend on the user's roles (a user may have several).
-// USED BY
-//   App.tsx (wraps signed-in routes)
-// =============================================================================
+// The frame around every page: sidebar / phone menu, and the top bar with search, bell and account menu.
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -50,7 +30,7 @@ function SideLink({ it }: { it: NavItem }) {
         ${isActive ? 'is-active bg-white/[0.09] text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]' : 'text-white/80 hover:text-white'}`}>
       {({ isActive }) => (
         <>
-          {/* marigold edge: full when active, grows in on hover */}
+
           <span aria-hidden="true" className="side-edge absolute inset-y-0 left-0 w-[3px] bg-marigold" />
           <Icon name={it.icon} className={`side-icon size-5 shrink-0 ${isActive ? 'text-marigold' : 'text-white/70'}`} />
           <span className="side-label">{it.label}</span>
@@ -60,7 +40,6 @@ function SideLink({ it }: { it: NavItem }) {
   )
 }
 
-/** The brand mark (gold arch + lamp on navy): components/BrandMark.tsx */
 function Mark({ className = 'size-5' }: { className?: string }) {
   return <BrandMark className={className} />
 }
@@ -77,8 +56,6 @@ function Brand() {
   )
 }
 
-// Search in the top bar: Enter opens Issues (or My submissions for recorders)
-// with the words filled in and a 30-day range. "/" jumps to it.
 function TopSearch({ canSeeIssues }: { canSeeIssues: boolean }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -86,7 +63,6 @@ function TopSearch({ canSeeIssues }: { canSeeIssues: boolean }) {
   const ref = useRef<HTMLInputElement>(null)
   const target = canSeeIssues ? '/issues' : '/my-submissions'
 
-  // ✕: empty the box; if that page is showing a search, clear it there too ("?q=" = clear).
   const clear = () => {
     setQ('')
     if (location.pathname === target) navigate(`${target}?q=`, { replace: true })
@@ -111,7 +87,7 @@ function TopSearch({ canSeeIssues }: { canSeeIssues: boolean }) {
       <input ref={ref} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search"
         onKeyDown={(e) => { if (e.key === 'Escape' && q) { e.preventDefault(); clear() } }}
         placeholder={canSeeIssues ? 'Search issues, venues, users...' : 'Search your submissions...'}
-        className="h-11 w-full rounded-full border border-ink/10 bg-white/85 pl-11 pr-11 text-[15px] text-ink shadow-[0_1px_2px_rgb(23_32_51/0.04)] outline-none transition-[border-color,box-shadow,background-color] placeholder:text-ink/45 hover:border-ink/20 focus:border-ink/30 focus:bg-white focus:ring-4 focus:ring-marigold/15" />
+        className="h-11 w-full rounded-full border border-ink/10 bg-white/85 pl-11 pr-11 text-[15px] text-ink shadow-[0_1px_2px_rgb(23_32_51/0.04)] outline-none transition-[border-color,box-shadow,background-color] placeholder:text-ink/45 hover:border-ink/20 focus:border-ink/30 focus:bg-white focus:ring-4 focus:ring-ink/[0.05]" />
       {q ? (
         <button type="button" onClick={clear} aria-label="Clear search"
           className="fade-in absolute right-2 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full bg-ink/[0.06] text-ink/70 transition-[background-color,color,transform] hover:rotate-90 hover:bg-ink/10 hover:text-ink">
@@ -124,7 +100,6 @@ function TopSearch({ canSeeIssues }: { canSeeIssues: boolean }) {
   )
 }
 
-/** Sidebar contents (brand, Work / Admin links, marigold thread): desktop sidebar and phone drawer. */
 function SideNav({ work, admin }: { work: NavItem[]; admin: NavItem[] }) {
   return (
     <>
@@ -143,7 +118,7 @@ function SideNav({ work, admin }: { work: NavItem[]; admin: NavItem[] }) {
           </div>
         )}
       </nav>
-      {/* A thin marigold thread across the bottom, drawn in once. */}
+
       <svg aria-hidden="true" viewBox="0 0 272 140" preserveAspectRatio="none" className="pointer-events-none absolute inset-x-0 bottom-0 h-36 w-full">
         <defs>
           <linearGradient id="thread" x1="0" x2="1" y1="0" y2="0">
@@ -164,11 +139,10 @@ const SIDEBAR_BG = 'bg-[linear-gradient(180deg,#1a2335_0%,#141c2c_100%)]'
 export function AppLayout() {
   const { user } = useAuth()
   const location = useLocation()
-  const [menuOpen, setMenuOpen] = useState(false)                 // phone sidebar (drawer)
-  const [barTitle, setBarTitle] = useState<string | null>(null)   // a page's title shown in the top bar (layouts/barTitle.ts)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [barTitle, setBarTitle] = useState<string | null>(null)
   useEffect(() => { setMenuOpen(false) }, [location.pathname])
 
-  // While the phone menu is open: Esc closes it and the page behind does not scroll.
   useEffect(() => {
     if (!menuOpen) return
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false) }
@@ -189,18 +163,16 @@ export function AppLayout() {
 
   return (
     <div className="relative flex min-h-full">
-      {/* White silk waves drifting slowly behind every page. */}
+
       <svg aria-hidden="true" className="silk" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice">
         <path d="M-40 760 C 240 640, 520 820, 820 700 S 1300 520, 1500 600 L 1500 960 L -40 960 Z" fill="#ffffff" fillOpacity="0.55" />
         <path d="M600 900 C 820 760, 1040 700, 1220 520 S 1420 260, 1520 230 L 1520 960 L 600 960 Z" fill="#ffffff" fillOpacity="0.45" />
       </svg>
 
-      {/* ---------- Desktop sidebar ---------- */}
       <aside className={`sticky top-0 z-20 hidden h-screen w-[17rem] shrink-0 flex-col overflow-y-auto ${SIDEBAR_BG} md:flex`}>
         <SideNav work={work} admin={admin} />
       </aside>
 
-      {/* ---------- Phone sidebar (drawer) ---------- */}
       {menuOpen && (
         <div className="fixed inset-0 z-[60] md:hidden" role="dialog" aria-modal="true" aria-label="Menu">
           <div className="fade-in absolute inset-0 bg-navy-950/45 backdrop-blur-[2px]" onClick={() => setMenuOpen(false)} aria-hidden="true" />
@@ -215,7 +187,7 @@ export function AppLayout() {
       )}
 
       <div className="relative z-10 flex min-w-0 flex-1 flex-col">
-        {/* ---------- Phone top bar ---------- */}
+
         <header className="sticky top-0 z-30 flex h-14 items-center justify-between bg-[linear-gradient(180deg,#1a2335,#151d2d)] px-2 shadow-[0_6px_18px_-10px_rgb(23_32_51/0.6)] pt-[env(safe-area-inset-top)] text-white md:hidden">
           <div className="flex min-w-0 items-center gap-1.5">
             {hasMenu && (
@@ -234,7 +206,6 @@ export function AppLayout() {
           </div>
         </header>
 
-        {/* ---------- Desktop top bar: search | bell | account ---------- */}
         <div className="sticky top-0 z-30 hidden h-[4.5rem] items-center justify-end border-b border-black/[0.04] bg-[#f6f5f2]/80 px-8 shadow-[0_8px_24px_-20px_rgb(23_32_51/0.35)] backdrop-blur-md md:flex lg:px-10">
           {barTitle && <h1 className="mr-auto truncate pr-6 font-serif text-[2.1rem] font-medium leading-none tracking-[-0.02em] text-ink">{barTitle}</h1>}
           <TopSearch canSeeIssues={work.some((w) => w.to === '/issues')} />

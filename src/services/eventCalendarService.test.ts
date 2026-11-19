@@ -1,3 +1,4 @@
+// Tests for the event-matching calls.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const invoke = vi.fn()

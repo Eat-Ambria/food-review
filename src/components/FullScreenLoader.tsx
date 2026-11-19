@@ -1,10 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   A centred spinner shown while the session is being restored on app start.
-// WHY IT EXISTS
-//   Without it, the login page flashes for a moment before a logged-in user is
-//   recognised.
-// =============================================================================
+// Shows a spinner while the app checks who is signed in.
 import { Spinner } from './ui/Spinner'
 
 export function FullScreenLoader() {

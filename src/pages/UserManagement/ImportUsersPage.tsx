@@ -1,20 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Admin → Users → Import CSV. Steps on one page:
-//     1. Upload    choose the file and a default role (template available)
-//     1b. Filter   only when the file has a Department column (HR export):
-//                  choose which departments to import; skip Inactive staff
-//     2. Preview   every row with its generated username, warnings and errors;
-//                  usernames and roles can be edited and rows ticked or unticked
-//     3. Importing progress while rows are sent in batches of 25
-//     4. Results   Total / Imported / Skipped / Failed, plus a CSV download of
-//                  every skipped or failed row with the reason
-// WHY IT EXISTS
-//   Bulk onboarding without creating duplicates. All the rules are in
-//   services/csvImportService.ts. This page only displays and edits them.
-// USED BY
-//   App.tsx route "/admin/users/import"
-// =============================================================================
+// Admin page to add many users at once from a CSV file.
 import { useMemo, useState, type ChangeEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Button, buttonClass } from '../../components/ui/Button'
@@ -55,14 +39,13 @@ export function ImportUsersPage() {
   const [view, setView] = useState<View>('all')
   const [progress, setProgress] = useState({ done: 0, total: 0 })
   const [results, setResults] = useState<ImportResultRow[]>([])
-  // Department / status filter (only used when the file has those columns)
+
   const [parsed, setParsed] = useState<ParseResult | null>(null)
   const [departments, setDepartments] = useState<{ name: string; count: number }[]>([])
   const [selectedDepts, setSelectedDepts] = useState<Set<string>>(new Set())
   const [skipInactive, setSkipInactive] = useState(true)
   const [excluded, setExcluded] = useState<ExcludedRow[]>([])
 
-  /** Build the preview from only the rows that pass the filter. */
   const applyFilter = (p: ParseResult, ex: Existing, depts: Set<string> | null, skip: boolean) => {
     const { kept, excluded: out } = filterParsed(p, { departments: depts, skipInactive: skip })
     setExcluded(out)
@@ -71,10 +54,9 @@ export function ImportUsersPage() {
     setStep('preview')
   }
 
-  // ---- Step 1: read the file -------------------------------------------------
   const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    e.target.value = '' // let the same file be chosen again
+    e.target.value = ''
     if (!file) return
     setFileError(null)
     setReading(true)
@@ -82,7 +64,7 @@ export function ImportUsersPage() {
     try {
       const parsed = await parseCsvFile(file)
       if (parsed.error) { setFileError(parsed.error); setReading(false); return }
-      // Always fetch fresh, so users created since the page opened are counted.
+
       const users = await listUsers()
       const ex: Existing = { usernames: new Set(users.map((u) => u.username)), namesToUsernames: new Map() }
       for (const u of users) {
@@ -94,7 +76,7 @@ export function ImportUsersPage() {
       const depts = departmentsIn(parsed)
       setDepartments(depts)
       setSelectedDepts(new Set())
-      // HR exports have a Department column → let the admin choose departments first.
+
       if (depts.length) setStep('filter')
       else applyFilter(parsed, ex, null, skipInactive)
     } catch (err) {
@@ -110,7 +92,6 @@ export function ImportUsersPage() {
     ]))
   }
 
-  // ---- Step 2: edits ---------------------------------------------------------
   const edit = (index: number, patch: Partial<PreviewRow>) => {
     if (!existing) return
     setRows((prev) => revalidate(prev.map((r) => (r.index === index ? { ...r, ...patch } : r)), existing))
@@ -139,7 +120,6 @@ export function ImportUsersPage() {
     return r.state !== 'blank'
   }), [rows, view])
 
-  // ---- Step 3: import --------------------------------------------------------
   const startImport = async () => {
     if (!counts.included) return
     setStep('importing')
@@ -149,7 +129,6 @@ export function ImportUsersPage() {
     setStep('results')
   }
 
-  // ---- Step 4: results -------------------------------------------------------
   const summary = useMemo(() => ({
     total: results.length,
     imported: results.filter((r) => r.outcome === 'imported').length,
@@ -176,7 +155,6 @@ export function ImportUsersPage() {
   })
   const selectedCount = departments.filter((d) => selectedDepts.has(d.name)).reduce((n, d) => n + d.count, 0)
 
-  // Steps as the admin sees them (department filter only appears when the file has departments).
   const STEPS: { key: Step[]; label: string }[] = [
     { key: ['upload'], label: 'Choose file' },
     ...(departments.length > 0 ? [{ key: ['filter'] as Step[], label: 'Departments' }] : []),
@@ -191,7 +169,6 @@ export function ImportUsersPage() {
         back={<Link to="/admin/users" className="inline-flex items-center gap-1.5 rounded-md text-sm font-semibold text-muted transition-colors hover:text-ink"><Icon name="arrowLeft" className="size-4" />Users</Link>}
         description="Add many people at once from a CSV file. Nothing is saved until you review and confirm." />
 
-      {/* Progress through the steps */}
       <ol className="mb-6 flex items-center gap-2 overflow-x-auto text-sm" aria-label="Import steps">
         {STEPS.map((s, i) => {
           const done = i < current || step === 'results'
@@ -209,7 +186,6 @@ export function ImportUsersPage() {
         })}
       </ol>
 
-      {/* ------------------------------ STEP 1 ------------------------------ */}
       {step === 'upload' && (
         <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
           <Card className="p-5 md:p-6">
@@ -249,7 +225,6 @@ export function ImportUsersPage() {
         </div>
       )}
 
-      {/* --------------------------- STEP 1b: FILTER --------------------------- */}
       {step === 'filter' && parsed && existing && (
         <Card className="max-w-2xl p-5 md:p-6">
           <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted"><Icon name="file" className="size-3.5" />{fileName} · {parsed.rows.length} rows</p>
@@ -283,7 +258,6 @@ export function ImportUsersPage() {
         </Card>
       )}
 
-      {/* ------------------------------ STEP 2 ------------------------------ */}
       {step === 'preview' && (
         <>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
@@ -355,7 +329,6 @@ export function ImportUsersPage() {
         </>
       )}
 
-      {/* ------------------------------ STEP 3 ------------------------------ */}
       {step === 'importing' && (
         <Card className="mx-auto max-w-lg p-8 text-center">
           <Spinner className="size-7 text-ink" />
@@ -367,7 +340,6 @@ export function ImportUsersPage() {
         </Card>
       )}
 
-      {/* ------------------------------ STEP 4 ------------------------------ */}
       {step === 'results' && (
         <>
           <Card className="grid grid-cols-2 gap-px overflow-hidden bg-line md:grid-cols-4">

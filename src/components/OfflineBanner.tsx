@@ -1,12 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   A thin bar at the top of the screen that appears while the device is offline.
-// WHY IT EXISTS
-//   Recording, transcription and login all need internet. Telling the user up
-//   front avoids confusing errors later.
-// USED BY
-//   App.tsx
-// =============================================================================
+// Shows a bar at the top while the phone has no internet.
 import { useEffect, useState } from 'react'
 import { Icon } from './Icon'
 

@@ -1,3 +1,4 @@
+// Tests for the department colours and shift order.
 import { describe, it, expect } from 'vitest'
 import { categoryTone, shiftIcon, SHIFT_ORDER } from './categoryStyle'
 

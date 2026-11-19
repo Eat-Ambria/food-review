@@ -1,19 +1,4 @@
-# =============================================================================
-# WHAT THIS FILE IS
-#   Makes every app icon from ONE picture: scripts/icon-source.png (the gold
-#   cloche + checklist tile on navy, 1536x1024, tile in the middle).
-# WHY IT EXISTS
-#   Phones, browsers and notifications each need their own size and shape:
-#     public/icon-192.png, icon-512.png   the tile with its gold border, corners
-#                                         transparent (Android / Chrome / notifications)
-#     public/icon-maskable-512.png        artwork on full navy, kept inside the
-#     public/apple-touch-icon.png (180)   centre "safe zone": Android and iPhone
-#                                         cut their own rounded shape
-#     public/favicon-64.png               browser tab
-#     public/brand-mark.png (128)         the logo inside the app (components/BrandMark.tsx)
-#   If the picture changes, replace icon-source.png and run:  npm run icons
-#   (needs Python with Pillow: pip install pillow)
-# =============================================================================
+# Makes all app icons (home screen, favicon, in-app logo) from scripts/icon-source.png. Run: npm run icons
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter
 
@@ -21,12 +6,10 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = Image.open(ROOT / 'scripts' / 'icon-source.png').convert('RGB')
 OUT = ROOT / 'public'
 
-# Where the tile sits in the source picture (outer edge of the gold border).
-TILE = (339, 97, 1183, 916)         # left, top, right, bottom (outer edge, incl. the light top of the border)
-RADIUS = 170                        # corner radius of the gold border
-PAD = 14                            # transparent margin, so the border never touches the image edge
-ART = (410, 190, 1110, 790)         # the artwork inside the tile (cloche, checklist, steam)
-
+TILE = (339, 97, 1183, 916)
+RADIUS = 170
+PAD = 14
+ART = (410, 190, 1110, 790)
 
 def tile_icon(size):
     """The whole tile, gold border included, transparent outside its rounded shape."""
@@ -40,7 +23,6 @@ def tile_icon(size):
         (l - box[0], t - box[1], r - box[0], b - box[1]), radius=RADIUS, fill=255)
     big.putalpha(mask)
     return big.resize((size, size), Image.LANCZOS)
-
 
 def maskable_icon(size):
     """The artwork on full-bleed navy, inside the 80% safe circle, no border.
@@ -58,19 +40,17 @@ def maskable_icon(size):
     for y in range(S):
         sy = min(h - 1, max(0, y - oy))
         for x in range(S):
-            px[x, y] = src[min(w - 1, max(0, x - ox)), sy]   # nearest edge pixel of the artwork
+            px[x, y] = src[min(w - 1, max(0, x - ox)), sy]
     bg = bg.filter(ImageFilter.GaussianBlur(40))
-    feather = Image.new('L', art.size, 0)                   # only the outermost pixels soften
+    feather = Image.new('L', art.size, 0)
     ImageDraw.Draw(feather).rectangle((10, 10, w - 10, h - 10), fill=255)
     feather = feather.filter(ImageFilter.GaussianBlur(8))
     bg.paste(art, (ox, oy), feather)
     return bg.resize((size, size), Image.LANCZOS)
 
-
 def save(img, name):
     img.save(OUT / name, optimize=True)
     print('wrote public/' + name)
-
 
 save(tile_icon(192), 'icon-192.png')
 save(tile_icon(512), 'icon-512.png')

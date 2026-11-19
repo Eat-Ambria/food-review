@@ -1,15 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   The shared button: primary / secondary / ghost / danger, three sizes, and a
-//   loading state. buttonClass() gives a <Link> the exact same look.
-// WHY IT EXISTS
-//   One button style across the app. The loading state also disables the
-//   button, which stops double-taps from sending a request twice.
-//   Sizes: sm (32px) for row actions, md (40px) for toolbars, lg (48px) for the
-//   main action of a form or screen — big enough for a thumb.
-// USED BY
-//   All pages
-// =============================================================================
+// The app's buttons (primary, secondary, ghost, danger) in three sizes, with a loading state.
 import type { ButtonHTMLAttributes } from 'react'
 import { Spinner } from './Spinner'
 
@@ -46,7 +35,6 @@ export function Button({ variant = 'primary', size = 'md', loading = false, clas
   )
 }
 
-/** Square icon-only button (toolbar refresh, close, etc.). Always needs an aria-label. */
 export function IconButton({ className = '', children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { 'aria-label': string }) {
   return (
     <button type="button" {...rest}

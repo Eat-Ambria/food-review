@@ -1,7 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Tests for utils/itemGroups.ts (putting issues about the same dish together).
-// =============================================================================
+// Tests for grouping issues by dish.
 import { describe, expect, it } from 'vitest'
 import { groupByItem, itemCounts, sortByItem } from './itemGroups'
 
@@ -9,7 +6,7 @@ type I = { id: number; item: string | null; cat: string }
 const rows: I[] = [
   { id: 1, item: 'Dal Makhani', cat: 'Kitchen' },
   { id: 2, item: 'AC', cat: 'Maintenance' },
-  { id: 3, item: 'dal  makhani', cat: 'Kitchen' },   // same dish, different spelling/spaces
+  { id: 3, item: 'dal  makhani', cat: 'Kitchen' },
   { id: 4, item: null, cat: 'Other' },
   { id: 5, item: 'Paneer Tikka', cat: 'Kitchen' },
 ]

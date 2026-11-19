@@ -1,35 +1,4 @@
--- =============================================================================
--- WHAT THIS FILE IS
---   Migration 15: notifications for POCs. An in-app bell, plus a phone push
---   (Web Push) whenever a new recording produces issues.
---
--- WHY IT EXISTS
---   Decision: every POC is told about every new complaint.
---   • ONE notification per recording (not per issue), so phones don't buzz
---     three times for one complaint: "3 new issues at Ambria Pushpanjali".
---   • The person who recorded it is not notified about their own recording.
---   • ONE write path: enqueue_new_issue_notifications() writes the bell row
---     (notifications) AND the push job (notification_queue) together, so the
---     bell and the phone always agree.
---   • Duplicate-proof: a recording can notify each person only once
---     (unique recipient + submission, unique dedupe_key), even if processing
---     is retried.
---   • push_subscriptions: one row per device that turned notifications on.
---     Dead devices (push service says 404/410) are removed by the sender.
---   • WhatsApp can later be added as another channel in notification_queue.
---
--- USED BY
---   supabase/functions/process-issue (enqueue + send), src/components/NotificationBell.tsx,
---   src/lib/push.ts
---
--- DEPENDS ON
---   Migrations 1–14.
---
--- SAFE TO RE-RUN
---   Yes.
--- =============================================================================
-
--- ---- devices --------------------------------------------------------------------------
+-- Migration 15: notifications (the in-app bell and phone push).
 create table if not exists public.push_subscriptions (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null references public.app_users(id) on delete cascade,
@@ -47,19 +16,16 @@ alter table public.push_subscriptions enable row level security;
 grant select, insert, update, delete on public.push_subscriptions to authenticated;
 grant all on public.push_subscriptions to service_role;
 
--- A user manages only their own devices.
 drop policy if exists push_subs_own on public.push_subscriptions;
 create policy push_subs_own on public.push_subscriptions for all to authenticated
   using (user_id = auth.uid() and public.is_active_user())
   with check (user_id = auth.uid() and public.is_active_user());
 
--- ---- bell rows: link + which recording ---------------------------------------------------
 alter table public.notifications add column if not exists submission_id uuid references public.submissions(id) on delete cascade;
 alter table public.notifications add column if not exists url text;
 create unique index if not exists notifications_once_per_submission
   on public.notifications (recipient_user_id, submission_id) where submission_id is not null;
 
--- ---- enqueue for one processed recording -----------------------------------------------------
 create or replace function public.enqueue_new_issue_notifications(p_submission_id uuid)
 returns int language plpgsql volatile security definer set search_path = public as $$
 declare
@@ -98,7 +64,6 @@ begin
              || ': ' || left(coalesce(v_first.ai_summary, ''), 140)
              || case when v_count > 1 then ' (+' || (v_count - 1) || ' more)' else '' end;
 
-  -- Every active POC except the person who recorded it.
   for r in
     select u.id from public.app_users u
      where u.is_active and 'poc' = any(u.roles) and u.id <> v_sub.submitted_by
@@ -117,7 +82,6 @@ begin
   return v_queued;
 end $$;
 
--- Mark everything read for the signed-in user (the bell's "Mark all read").
 create or replace function public.mark_all_notifications_read()
 returns void language sql volatile security definer set search_path = public as $$
   update public.notifications set read_at = now()

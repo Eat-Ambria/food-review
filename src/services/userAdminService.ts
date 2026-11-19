@@ -1,17 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Every Admin action on users: list, create (single or batch), edit, reset
-//   PIN, unlock.
-// WHY IT EXISTS
-//   Keeps Supabase calls out of the screens. Each call goes to a function that
-//   checks "is the caller an admin?" on the server, so these calls are safe
-//   even if someone opens them from the browser console.
-// USED BY
-//   pages/UserManagement/*
-// DEPENDS ON
-//   Edge Function admin-users; SQL admin_list_users, admin_update_user,
-//   admin_reset_pin, admin_unlock_user
-// =============================================================================
+// Admin actions on users: list, create, edit, reset PIN, unlock.
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import type { CreateResult, ManagedUser, NewUserInput } from '../types/users'
@@ -23,21 +10,19 @@ export async function listUsers(): Promise<ManagedUser[]> {
   return (data ?? []) as ManagedUser[]
 }
 
-/** Every username already in use (for the import preview's duplicate check). */
 export async function existingUsernames(): Promise<Set<string>> {
   const users = await listUsers()
   return new Set(users.map((u) => u.username))
 }
 
-/** Sends up to 50 users per call. Returns one result per input row. */
 export async function createUsers(rows: NewUserInput[]): Promise<CreateResult[]> {
   const { data, error } = await supabase.functions.invoke('admin-users', { body: { rows } })
   if (error) {
     let message = 'Could not reach the server.'
     if (error instanceof FunctionsHttpError) {
-      try { message = (await error.context.json())?.error ?? message } catch { /* keep default */ }
+      try { message = (await error.context.json())?.error ?? message } catch { }
     }
-    // The whole request failed, so mark every row in it as failed with that reason.
+
     return rows.map((r) => ({ index: r.index, ok: false, error: message }))
   }
   return (data?.results ?? []) as CreateResult[]

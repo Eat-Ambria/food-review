@@ -1,39 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   The Record screen: record a complaint (max 2 minutes), listen to it, get
-//   the transcript from Sarvam straight away, and correct it.
-// WHY IT EXISTS
-//   It is the main screen for Recording Users, so it is built for one-handed
-//   phone use: one large button, a big timer, a live waveform so the user can
-//   see the mic is hearing them, and a 15-second warning before the limit.
-//
-//   Flow:  record → stop → (saved on device) → transcribing… → editable text
-//
-//   • Transcription starts the moment recording stops, not at Submit.
-//   • The recording and every transcription result are saved on the device
-//     (services/draftStore.ts). A refresh, a closed app or a lost connection
-//     never loses them, and Retry only redoes what is missing.
-//   • Spend protection: if the user hits an anti-spam limit (a new recording
-//     less than 20 s after the previous one, or too many in 15 min), the recording stays
-//     saved and the screen shows the time it will be transcribed; it then runs
-//     automatically. "Record again" is disabled while transcription is running,
-//     so half-paid work isn't thrown away.
-//   • Event: once the transcript is ready (and again after edits), the server
-//     works out which Calendar booking it is about. The card only DISPLAYS the
-//     result; nobody picks an event by hand (services/eventCalendarService.ts).
-//   • Submit uploads the audio and sends the reviewed transcript to
-//     process-issue (services/submitService.ts). The device draft is deleted
-//     only after the server confirms it saved the submission; until then a
-//     failed submit can simply be retried, and it never creates a duplicate.
-//   • Sarvam's text is kept unchanged as the "original". The user's edits are
-//     saved separately, and "Undo my changes" brings the original back. Nothing
-//     edits the user's text behind their back.
-// USED BY
-//   App.tsx route "/record"
-// DEPENDS ON
-//   hooks/useRecorder.ts, services/draftStore.ts, services/sarvamService.ts,
-//   components/AudioPlayer.tsx
-// =============================================================================
+// Record a complaint, check the transcript and the matched function, then submit it.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { RECORDER_ERROR_TEXT, useRecorder, type Recording } from '../../hooks/useRecorder'
@@ -44,9 +9,6 @@ import { EventMatchCard } from '../../components/EventMatchCard'
 import type { EventMatch } from '../../types/events'
 import { DuplicateError, submitRecording, type DuplicateInfo, type SubmitResult } from '../../services/submitService'
 
-// If reading the issues fails (e.g. the AI is busy), try again from this screen
-// every 10 s, up to 6 times (~1 minute), so nobody waits for the 5-minute job
-// or records the same complaint again. Re-sending is safe: same recording id.
 const AUTO_RETRY_EVERY_MS = 10_000
 const AUTO_RETRY_MAX = 6
 import { AudioPlayer } from '../../components/AudioPlayer'
@@ -68,14 +30,12 @@ const BARS = 40
 type TxPhase = 'none' | 'running' | 'ready' | 'failed'
 interface TxStatus { phase: TxPhase; done: number; total: number; error?: string; retryable?: boolean; retryAt?: string | null }
 
-// Idle waveform: three soft humps (tallest in the middle), dots at the edges.
 const idleAmp = (i: number) => {
   const x = i / (BARS - 1)
   const hump = (c: number, h: number, w: number) => h * Math.exp(-((x - c) ** 2) / (2 * w * w))
   return 0.14 + Math.max(hump(0.18, 0.55, 0.05), hump(0.5, 1, 0.045), hump(0.8, 0.6, 0.05), 0.18 * Math.sin(Math.PI * x))
 }
 
-/** Five gold bars bouncing like a voice level: "working on your recording". */
 function WaveLoader({ big = false }: { big?: boolean }) {
   return (
     <span aria-hidden="true" className={`flex shrink-0 items-center justify-center gap-[3px] rounded-full bg-[#fbecc7] ${big ? 'size-12' : 'size-8'}`}>
@@ -86,9 +46,8 @@ function WaveLoader({ big = false }: { big?: boolean }) {
   )
 }
 
-/** The short wait between two recordings, shown as calm processing with a filling bar. */
 function WaitingCard({ until }: { until: string }) {
-  const end = new Date(until).getTime() + 2000               // the page retries ~2 s after
+  const end = new Date(until).getTime() + 2000
   const [start] = useState(() => Date.now())
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -114,11 +73,24 @@ function WaitingCard({ until }: { until: string }) {
   )
 }
 
+const idleColour = (amp: number) => {
+  const k = Math.max(0, Math.min(1, (amp - 0.35) / 0.65))
+  const mix = (a: number, b: number) => Math.round(a + (b - a) * k)
+  return `rgb(${mix(196, 120)} ${mix(200, 128)} ${mix(208, 142)})`
+}
+
+function mirrored(levels: number[]) {
+  const half = levels.slice(-Math.ceil(levels.length / 2))
+  const n = half.length
+  const left = half.map((v, i) => ({ v, age: (n - 1 - i) / Math.max(1, n - 1) }))
+  return [...left, ...[...left].reverse()].slice(0, levels.length)
+}
+
 const clock = (iso: string) => new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
 
 export function RecordPage() {
   const { user } = useAuth()
-  // Effects depend on the id only, so a profile refresh doesn't re-run them.
+
   const userId = user?.id
   const rec = useRecorder(MAX_SECONDS)
   const [bars, setBars] = useState<number[]>(() => Array(BARS).fill(0))
@@ -127,26 +99,25 @@ export function RecordPage() {
   const [confirmDiscard, setConfirmDiscard] = useState(false)
 
   const [tx, setTx] = useState<TxStatus>({ phase: 'none', done: 0, total: 0 })
-  const [rawText, setRawText] = useState<string | null>(null)   // Sarvam's original
-  const [text, setText] = useState('')                          // what the user edits
-  const [match, setMatch] = useState<EventMatch | null>(null)   // which Calendar booking (from the server)
+  const [rawText, setRawText] = useState<string | null>(null)
+  const [text, setText] = useState('')
+  const [match, setMatch] = useState<EventMatch | null>(null)
   const [matchLoading, setMatchLoading] = useState(false)
   const [matchError, setMatchError] = useState<string | null>(null)
-  const matchedTextRef = useRef<string | null>(null)            // last text that was matched
-  const [chosenEventId, setChosenEventId] = useState<string | null>(null)   // recorder's pick when uncertain
-  const eventCardRef = useRef<HTMLDivElement>(null)                             // to scroll to the function choice
+  const matchedTextRef = useRef<string | null>(null)
+  const [chosenEventId, setChosenEventId] = useState<string | null>(null)
+  const eventCardRef = useRef<HTMLDivElement>(null)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState<SubmitResult | null>(null)
   const [duplicate, setDuplicate] = useState<DuplicateInfo | null>(null)
   const [autoRetries, setAutoRetries] = useState(0)
-  // Kept after the device draft is deleted, so the screen can keep retrying.
+
   const sentRef = useRef<Parameters<typeof submitRecording>[0] | null>(null)
   const partialRef = useRef<TranscriptionState | null>(null)
-  const runIdRef = useRef(0)                                     // ignores results of a discarded recording
-  const clientIdRef = useRef<string | null>(null)               // this recording's client_submission_id
+  const runIdRef = useRef(0)
+  const clientIdRef = useRef<string | null>(null)
 
-  // Transcript box: height follows the text (3 lines minimum, max-h in CSS).
   const transcriptRef = useRef<HTMLTextAreaElement>(null)
   useLayoutEffect(() => {
     const el = transcriptRef.current
@@ -158,7 +129,6 @@ export function RecordPage() {
   const levelRef = useRef(0)
   levelRef.current = rec.level
 
-  // ---- Transcription --------------------------------------------------------
   const runTranscription = useCallback(async (blob: Blob) => {
     if (!userId) return
     if (!clientIdRef.current) clientIdRef.current = crypto.randomUUID()
@@ -193,7 +163,6 @@ export function RecordPage() {
     }
   }, [userId])
 
-  // ---- Restore an unsent recording left on this device ---------------------
   const { restore } = rec
   useEffect(() => {
     if (!userId) return
@@ -217,7 +186,6 @@ export function RecordPage() {
     return () => { cancelled = true }
   }, [userId, restore, runTranscription])
 
-  // ---- New recording: save on device, then transcribe immediately ----------
   const lastHandledRef = useRef<Recording | null>(null)
   useEffect(() => {
     const r = rec.recording
@@ -243,17 +211,15 @@ export function RecordPage() {
     })
   }, [userId, rec.recording, recoveredAt, runTranscription])
 
-  // ---- Limit reached → transcribe automatically once the limit resets --------
   useEffect(() => {
     if (tx.phase !== 'failed' || !tx.retryAt || !rec.recording) return
     const blob = rec.recording.blob
     const ms = Math.max(1000, new Date(tx.retryAt).getTime() - Date.now() + 2000)
-    // setTimeout can't wait longer than ~24.8 days; the daily limit resets within a day anyway.
+
     const id = setTimeout(() => void runTranscription(blob), Math.min(ms, 2 ** 31 - 1))
     return () => clearTimeout(id)
   }, [tx.phase, tx.retryAt, rec.recording, runTranscription])
 
-  // ---- Back online after a failure → retry automatically --------------------
   useEffect(() => {
     if (tx.phase !== 'failed' || !tx.retryable || tx.retryAt || !rec.recording) return
     const blob = rec.recording.blob
@@ -262,7 +228,6 @@ export function RecordPage() {
     return () => window.removeEventListener('online', onOnline)
   }, [tx.phase, tx.retryable, tx.retryAt, rec.recording, runTranscription])
 
-  // ---- Identify the event from the transcript (debounced; re-runs after edits) ---
   useEffect(() => {
     if (!userId || tx.phase !== 'ready' || !text.trim() || text === matchedTextRef.current) return
     let cancelled = false
@@ -274,7 +239,7 @@ export function RecordPage() {
         if (cancelled) return
         matchedTextRef.current = text
         setMatch(m)
-        // A new match may list different functions: keep the pick only if it is still offered.
+
         setChosenEventId((prev) => (prev === 'none' || m.candidates?.some((c) => c.calendar_event_id === prev)) ? prev : null)
         await updateDraft(userId, { eventMatch: m })
       } catch (e) {
@@ -286,14 +251,12 @@ export function RecordPage() {
     return () => { cancelled = true; clearTimeout(id); setMatchLoading(false) }
   }, [userId, text, tx.phase])
 
-  // ---- Save edits on the device (debounced) ---------------------------------
   useEffect(() => {
     if (!userId || tx.phase !== 'ready') return
     const id = setTimeout(() => void updateDraft(userId, { editedTranscript: text }), 500)
     return () => clearTimeout(id)
   }, [userId, text, tx.phase])
 
-  // ---- Waveform: sample the level ~12 times a second -----------------------
   useEffect(() => {
     if (rec.status !== 'recording') return
     setBars(Array(BARS).fill(0))
@@ -308,7 +271,6 @@ export function RecordPage() {
     void rec.start()
   }, [rec])
 
-  // ---- Submit ------------------------------------------------------------------
   const doSubmit = async (allowDuplicate = false) => {
     const r = rec.recording
     if (!userId || !r || !clientIdRef.current || !text.trim() || submitting) return
@@ -316,7 +278,7 @@ export function RecordPage() {
     setSubmitError(null)
     setDuplicate(null)
     try {
-      await updateDraft(userId, { editedTranscript: text })      // make sure the latest edit is saved first
+      await updateDraft(userId, { editedTranscript: text })
       const d = await loadDraft(userId)
       const input = {
         userId,
@@ -331,7 +293,7 @@ export function RecordPage() {
         chosenCalendarEventId: match?.status === 'ambiguous' ? chosenEventId : null,
       }
       const result = await submitRecording(input)
-      // The server has it now; the device copy is no longer needed.
+
       sentRef.current = input
       await deleteDraft(userId)
       setAutoRetries(0)
@@ -343,22 +305,21 @@ export function RecordPage() {
     setSubmitting(false)
   }
 
-  // ---- Reading failed but will retry → retry from here, quickly ----------------
   useEffect(() => {
     if (!submitted || submitted.status !== 'failed' || !submitted.will_retry || autoRetries >= AUTO_RETRY_MAX || !sentRef.current) return
     let cancelled = false
     const id = setTimeout(async () => {
       try {
-        const again = await submitRecording(sentRef.current!)     // same recording id → never a duplicate
+        const again = await submitRecording(sentRef.current!)
         if (!cancelled) setSubmitted(again)
-      } catch { /* network: the next tick or the 5-minute job will try again */ }
+      } catch { }
       if (!cancelled) setAutoRetries((n) => n + 1)
     }, AUTO_RETRY_EVERY_MS)
     return () => { cancelled = true; clearTimeout(id) }
   }, [submitted, autoRetries])
 
   const discard = async () => {
-    runIdRef.current++                // any transcription still running is ignored
+    runIdRef.current++
     if (userId) await deleteDraft(userId)
     setSubmitted(null)
     setSubmitError(null)
@@ -382,14 +343,11 @@ export function RecordPage() {
   }
 
   const recording = rec.status === 'recording'
-  // Several functions fit and none was picked yet: Submit waits for a choice
-  // (a function, or 'None of these').
+
   const mustChoose = !matchLoading && match?.status === 'ambiguous' && (match.candidates?.length ?? 0) > 1 && !chosenEventId
   const remaining = MAX_SECONDS - rec.elapsed
-  const progress = Math.min(rec.elapsed / MAX_SECONDS, 1)
   const edited = rawText !== null && text !== rawText
 
-  // ---- After a successful submit ---------------------------------------------------
   if (submitted) {
     const n = submitted.issues.length
     const headline = submitted.status === 'pending_assignment' || submitted.status === 'assigned'
@@ -421,14 +379,14 @@ export function RecordPage() {
           </div>
 
           {n > 0 && (
-            // Grouped by dish / thing: each item once, its problems under it.
+
             <IssuesByItem className="border-t border-line px-5 py-5 md:px-6"
               issues={submitted.issues} itemOf={(it) => it.item} categoryOf={(it) => it.category_raw}
               renderIssue={(it) => (
                 <div>
                   <CategoryChip name={it.category_raw ?? 'Other'} />
                   <p className="mt-1.5 text-sm leading-relaxed">{it.ai_summary ?? it.description}</p>
-                  {/* Each issue's own venue + event: one recording can cover several venues. */}
+
                   <p className="mt-1 flex items-start gap-1.5 text-xs text-muted">
                     <Icon name="pin" className="mt-px size-3.5 shrink-0" />
                     {[it.venue?.venue_name,
@@ -439,7 +397,6 @@ export function RecordPage() {
               )} />
           )}
 
-          {/* What was actually said: the submitted transcript, unchanged, plus the recording. */}
           <div className="border-t border-line bg-subtle px-5 py-5 md:px-6">
             <p className="text-sm font-bold">What you said</p>
             {rec.recording && <div className="mt-3"><AudioPlayer blob={rec.recording.blob} durationSec={rec.recording.durationSec} /></div>}
@@ -454,22 +411,18 @@ export function RecordPage() {
   }
 
   const warn = recording && rec.elapsed >= WARN_AT
-  const R = 54                                   // progress ring radius (viewBox 120)
-  const C = 2 * Math.PI * R
 
   return (
     <div className="mx-auto max-w-[52rem]">
       <PageHeader align="center" title="Record an issue"
         description={<>Say the venue, the guest or function, and then each problem. The date is taken as <b className="font-bold text-ink">today</b> unless you say another day (e.g. &ldquo;kal&rdquo;). Hindi, English or both are fine.</>} />
 
-      {/* ---------------------------- Recorder ---------------------------- */}
       {rec.status !== 'stopped' && (
-        // data-no-pull: pull-to-refresh is off while recording (a reload would lose it)
+
         <section data-no-pull={recording || rec.status === 'requesting' ? '' : undefined}
           className={`relative isolate mx-auto flex max-w-[51rem] flex-col items-center overflow-hidden rounded-[2rem] border border-white/90 bg-white/80 px-5 pb-7 pt-6 backdrop-blur-sm md:pb-11 md:pt-9 transition-shadow duration-300
           ${recording ? 'shadow-[0_30px_60px_-28px_rgb(192_60_11/0.45)]' : 'shadow-float'}`}>
-          {/* Soft light behind the button: gold when idle, a warm red wash while
-              recording that brightens with the voice. */}
+
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 transition-opacity duration-500"
             style={{
               opacity: recording ? 0.55 + Math.min(rec.level, 1) * 0.45 : 1,
@@ -478,7 +431,6 @@ export function RecordPage() {
                 : 'radial-gradient(circle at 50% 74%, rgb(224 162 37 / 0.14), transparent 40%)',
             }} />
 
-          {/* Status: tells at a glance whether the mic is live. */}
           <span className={`inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[13px] font-medium transition-colors
             ${recording ? 'bg-danger-soft text-danger' : rec.status === 'requesting' ? 'bg-accent-soft text-accent' : 'bg-ink/[0.05] text-ink'}`}>
             <span className={`size-2 rounded-full ${recording ? 'rec-dot bg-danger' : rec.status === 'requesting' ? 'bg-marigold' : 'bg-[#22a35a]'}`} />
@@ -490,39 +442,42 @@ export function RecordPage() {
           </p>
           <p className="mt-2 text-[15px] text-ink/60">{recording ? `${fmtTime(remaining)} left` : 'Up to 2:00'}</p>
 
-          {/* Waveform. Idle: three soft humps that sway gently. Recording: the real
-              voice level, newest bar on the right, older bars fading out. */}
           <div className="mt-5 flex h-12 w-full max-w-md items-center justify-between px-1 md:mt-7 md:h-14" aria-hidden="true">
-            {bars.map((v, i) => recording ? (
-              <span key={i}
-                className={`h-full w-[3px] rounded-full transition-transform duration-100 ease-out ${warn ? 'bg-danger' : 'bg-ink'}`}
-                style={{ transform: `scaleY(${Math.max(0.08, Math.min(1, v * 1.15))})`, opacity: 0.25 + 0.75 * (i / (BARS - 1)) }} />
-            ) : (
-              <span key={i} className="wave-idle h-full w-[3px] rounded-full bg-ink/35"
-                style={{ '--amp': idleAmp(i), animationDelay: `${-i * 60}ms` } as React.CSSProperties} />
-            ))}
+            {recording
+              ? mirrored(bars).map(({ v, age }, i) => (
+                <span key={i}
+                  className={`h-full w-[3px] rounded-full transition-transform duration-100 ease-out ${warn ? 'bg-danger' : 'bg-ink'}`}
+                  style={{ transform: `scaleY(${Math.max(0.08, Math.min(1, v * 1.2))})`, opacity: 1 - age * 0.75 }} />
+              ))
+              : bars.map((_, i) => (
+                <span key={i} className="wave-idle h-full w-[3px] rounded-full"
+                  style={{ '--amp': idleAmp(i), animationDelay: `${-i * 60}ms`, background: idleColour(idleAmp(i)) } as React.CSSProperties} />
+              ))}
           </div>
 
-          {/* The button. Idle: a gold ring with a thin cream gap (like a jewellery
-              setting) and a breathing golden halo. Recording: a progress ring fills
-              (marigold, red in the last 15 s) and one soft pulse shows the mic is live. */}
           <div className="relative mt-6 flex size-36 items-center justify-center md:mt-10 md:size-40">
             {!recording && (
               <>
-                <span aria-hidden="true" className="gold-breathe pointer-events-none absolute inset-3 rounded-full bg-marigold/35" />
-                <span aria-hidden="true" className="pointer-events-none absolute inset-[11px] rounded-full bg-[conic-gradient(from_210deg,#f6e3ae,#e0a225,#f3d27f,#c98f1c,#f6e3ae)] shadow-[0_0_44px_4px_rgb(224_162_37/0.3)]" />
-                <span aria-hidden="true" className="pointer-events-none absolute inset-[15px] rounded-full bg-[#fbf6ea]" />
+
+                <span aria-hidden="true" className="sonar sonar-slow pointer-events-none absolute inset-[11px] rounded-full border border-marigold/50" />
+
+                <span aria-hidden="true" className="pointer-events-none absolute inset-[11px] rounded-full bg-[conic-gradient(from_210deg,#f6e3ae,#e0a225,#f3d27f,#c98f1c,#f6e3ae)] shadow-[0_8px_30px_-6px_rgb(224_162_37/0.35)]" />
+                <span aria-hidden="true" className="pointer-events-none absolute inset-[14px] rounded-full bg-[#fbf6ea]" />
               </>
             )}
             {recording && (
               <>
-                <span aria-hidden="true" className="rec-pulse pointer-events-none absolute inset-5 rounded-full bg-danger/25" />
-                <svg className="pointer-events-none absolute inset-0 -rotate-90" viewBox="0 0 120 120" aria-hidden="true">
-                  <circle cx="60" cy="60" r={R} fill="none" stroke="var(--color-line)" strokeWidth="3" />
-                  <circle cx="60" cy="60" r={R} fill="none" stroke={warn ? 'var(--color-danger)' : 'var(--color-marigold)'}
-                    strokeWidth="3" strokeLinecap="round" strokeDasharray={`${progress * C} ${C}`}
-                    className="transition-[stroke-dasharray] duration-300 ease-linear" />
-                </svg>
+
+                {[
+                  { inset: 'inset-[18px]', tint: 'bg-danger/20', gain: 0.22, ms: 120, delay: '0s' },
+                  { inset: 'inset-[8px]', tint: 'bg-danger/12', gain: 0.4, ms: 220, delay: '0.4s' },
+                  { inset: 'inset-0', tint: 'bg-danger/[0.07]', gain: 0.6, ms: 340, delay: '0.8s' },
+                ].map((o, i) => (
+                  <span key={i} aria-hidden="true" className={`pointer-events-none absolute ${o.inset} rounded-full`}
+                    style={{ transform: `scale(${1 + Math.min(rec.level, 1) * o.gain})`, transition: `transform ${o.ms}ms cubic-bezier(0.2, 0.7, 0.3, 1)` }}>
+                    <span className={`orb-breathe block size-full rounded-full ${o.tint}`} style={{ animationDelay: o.delay }} />
+                  </span>
+                ))}
               </>
             )}
             <button type="button"
@@ -534,11 +489,10 @@ export function RecordPage() {
                 ${recording
                   ? 'bg-[radial-gradient(circle_at_35%_25%,#e2683a,var(--color-danger)_60%)] shadow-[0_12px_30px_-10px_rgb(192_60_11/0.7)]'
                   : 'bg-[radial-gradient(circle_at_35%_25%,#36435e,#1b2539_55%,#141c2c)] shadow-[inset_0_-6px_14px_rgb(0_0_0/0.25),0_10px_24px_-10px_rgb(23_32_51/0.6)]'}`}>
-              <span aria-hidden="true" className="pointer-events-none absolute inset-x-6 top-2 h-8 rounded-full bg-white/10 blur-[1px]" />
               {rec.status === 'requesting'
                 ? <Spinner className="size-7" />
                 : <span key={recording ? 'stop' : 'mic'} className="icon-pop relative">
-                    <Icon name={recording ? 'stop' : 'mic'} className="size-11" strokeWidth={recording ? 0 : 1.8} fill={recording ? 'currentColor' : 'none'} />
+                    <Icon name={recording ? 'stop' : 'mic'} className="size-10" strokeWidth={recording ? 0 : 1.8} fill={recording ? 'currentColor' : 'none'} />
                   </span>}
             </button>
           </div>
@@ -553,7 +507,6 @@ export function RecordPage() {
         </section>
       )}
 
-      {/* --------------------------- After stop --------------------------- */}
       {rec.status === 'stopped' && rec.recording && (
         <section className="mx-auto max-w-2xl space-y-4">
           {recoveredAt && (
@@ -579,7 +532,6 @@ export function RecordPage() {
             )}
           </Card>
 
-          {/* Transcribing */}
           {tx.phase === 'running' && (
             <Card className="p-5">
               <div role="status" className="flex items-center gap-3">
@@ -596,19 +548,16 @@ export function RecordPage() {
             </Card>
           )}
 
-          {/* Short wait (the gap between two recordings): looks like normal
-              processing, with a moving wave and a bar that fills until it starts by itself. */}
           {tx.phase === 'failed' && tx.retryAt && new Date(tx.retryAt).getTime() - Date.now() < 120_000 && (
             <WaitingCard until={tx.retryAt} />
           )}
-          {/* Long wait (too many recordings in a short time): say when it will run. */}
+
           {tx.phase === 'failed' && tx.retryAt && new Date(tx.retryAt).getTime() - Date.now() >= 120_000 && (
             <Alert tone="warn" icon="clock" title="Your recording is saved">
               Many recordings were sent in a short time, so this one will be transcribed automatically at <b>{clock(tx.retryAt)}</b>. Keep this page open, or come back after that time.
             </Alert>
           )}
 
-          {/* Failed */}
           {tx.phase === 'failed' && !tx.retryAt && (
             <Alert tone="danger" title={tx.error}
               action={tx.retryable ? (
@@ -620,7 +569,6 @@ export function RecordPage() {
             </Alert>
           )}
 
-          {/* Ready: editable transcript */}
           {tx.phase === 'ready' && (
             <Card className="p-4">
               <div className="flex items-center justify-between gap-2">
@@ -635,10 +583,10 @@ export function RecordPage() {
                 )}
               </div>
               <p className="mt-0.5 text-xs text-muted">Check names, venue and dates. Correct anything that was heard wrong.</p>
-              {/* Starts at 3 lines and grows with the text (up to ~10 lines, then scrolls). */}
+
               <textarea id="transcript" ref={transcriptRef} value={text} onChange={(e) => setText(e.target.value)}
                 rows={3} maxLength={5000} spellCheck={false}
-                className="mt-3 max-h-64 min-h-22 w-full resize-none overflow-y-auto rounded-lg border border-line bg-surface px-3.5 py-3 text-[15px] leading-relaxed outline-none transition-[border-color,box-shadow] hover:border-line-strong focus:border-ink/60 focus:ring-[3px] focus:ring-marigold/20" />
+                className="mt-3 max-h-64 min-h-22 w-full resize-none overflow-y-auto rounded-lg border border-line bg-surface px-3.5 py-3 text-[15px] leading-relaxed outline-none transition-[border-color,box-shadow] hover:border-line-strong focus:border-ink/60 focus:ring-[3px] focus:ring-ink/[0.06]" />
               <p className={`mt-1 text-right text-xs tabular-nums ${text.length > 4800 ? 'text-warn' : 'text-faint'}`}>{text.length} / 5000</p>
             </Card>
           )}
@@ -651,10 +599,6 @@ export function RecordPage() {
 
           {submitError && <Alert tone="danger">{submitError}</Alert>}
 
-          {/* Actions. Phones: a solid bar FIXED to the very bottom of the screen
-              (above the iPhone home indicator), whether the page is short or
-              long, so Submit is always in reach; the spacer keeps the last card
-              from hiding behind it. Wider screens: plain buttons under the cards. */}
           <div aria-hidden="true" className="h-20 md:hidden" />
           <div className="fixed inset-x-0 bottom-0 z-30 rounded-t-2xl bg-surface px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_30px_-18px_rgb(23_32_51/0.35)] ring-1 ring-black/5 md:static md:rounded-none md:bg-transparent md:p-0 md:shadow-none md:ring-0">
             {mustChoose && (
@@ -678,7 +622,6 @@ export function RecordPage() {
         </section>
       )}
 
-      {/* Same complaint sent recently? Let the user decide. */}
       <Modal open={Boolean(duplicate)} title="Already sent?" onClose={() => setDuplicate(null)}
         footer={<>
           <Button variant="secondary" onClick={() => void discard()}>Don&rsquo;t send</Button>

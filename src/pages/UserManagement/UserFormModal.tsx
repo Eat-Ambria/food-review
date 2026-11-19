@@ -1,15 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   The Add User / Edit User dialog.
-// WHY IT EXISTS
-//   Add: name → a username is suggested automatically (editable), roles
-//        default to Recording User, and the PIN is always 0000 with a forced change.
-//   Edit: name, username, roles, mobile, email, active flag.
-//   Roles are tick-boxes: a user may have several (e.g. Recording User + POC). The server refuses
-//        unsafe edits (removing your own admin access, removing the last admin).
-// USED BY
-//   pages/UserManagement/UserManagementPage.tsx
-// =============================================================================
+// The Add User / Edit User dialog.
 import { useEffect, useState, type FormEvent } from 'react'
 import { Modal } from '../../components/ui/Modal'
 import { Button } from '../../components/ui/Button'
@@ -29,7 +18,7 @@ import { usernameFromName } from '../../services/csvImportService'
 
 export function UserFormModal({ open, user, existingUsernames, onClose, onSaved }: {
   open: boolean
-  user: ManagedUser | null          // null = Add
+  user: ManagedUser | null
   existingUsernames: Set<string>
   onClose: () => void
   onSaved: (message: string) => void
@@ -44,7 +33,6 @@ export function UserFormModal({ open, user, existingUsernames, onClose, onSaved 
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  // Reset the form every time it opens.
   useEffect(() => {
     if (!open) return
     setName(user?.name ?? '')
@@ -57,7 +45,6 @@ export function UserFormModal({ open, user, existingUsernames, onClose, onSaved 
     setError(null)
   }, [open, user])
 
-  // Suggest a username from the name until the admin types their own.
   const onNameChange = (v: string) => {
     setName(v)
     if (!usernameTouched) {

@@ -1,14 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   The one place every icon in the app comes from (Lucide, no emoji).
-// WHY IT EXISTS
-//   Emoji render differently on every phone. Lucide icons are crisp SVGs that
-//   follow the text colour (currentColor). Components ask for an icon by a
-//   short app-level name (<Icon name="mic" />), so swapping a glyph is a
-//   one-line change here and only the icons we use end up in the bundle.
-// USED BY
-//   Any component: <Icon name="mic" className="size-5" />
-// =============================================================================
+// Gives every icon in the app by name (Lucide icons, no emoji).
 import type { SVGProps } from 'react'
 import {
   AlertTriangle, ArrowLeft, Bell, Calendar, CalendarCheck2, Check, ChevronDown, ChevronRight, CircleCheck,

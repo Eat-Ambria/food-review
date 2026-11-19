@@ -1,35 +1,15 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Pull-to-refresh for phones: at the top of a page, drag down and let go to
-//   reload the app (always the newest version, via lib/refreshApp.ts).
-// WHY IT EXISTS
-//   The installed app (Add to Home Screen / Install app) has no browser reload
-//   button, so staff had no way to refresh. A round marigold indicator follows
-//   the finger and its arrow turns; past the threshold it says "Release to
-//   refresh".
-//   It stays OFF when:
-//     • the page is not scrolled to the very top (normal scrolling wins)
-//     • something marked data-no-pull is on screen (the recorder while
-//       recording: a reload would lose the recording in progress)
-//     • a dialog is open, or the finger starts inside a scrolled box
-//   The browser's own pull-to-refresh is switched off in index.css
-//   (overscroll-behavior), so only this one runs.
-// USED BY
-//   layouts/AppLayout.tsx
-// =============================================================================
+// Pull down at the top of a page to reload the app (phones).
 import { useEffect, useRef, useState } from 'react'
 import { Icon } from './Icon'
 import { refreshApp } from '../lib/refreshApp'
 
-const THRESHOLD = 70     // px of (damped) pull needed to refresh
+const THRESHOLD = 70
 const MAX = 110
 
-/** How far the page is scrolled, whichever element is doing the scrolling. */
 const pageScrollTop = () =>
   Math.max(window.scrollY, document.documentElement.scrollTop, document.body.scrollTop,
     document.getElementById('root')?.scrollTop ?? 0)
 
-/** True if the touch began inside something that is itself scrolled down. */
 function insideScrolledBox(el: EventTarget | null): boolean {
   for (let n = el as HTMLElement | null; n; n = n.parentElement) {
     if (n.scrollTop > 0) return true
@@ -54,9 +34,9 @@ export function PullToRefresh() {
     const onMove = (e: TouchEvent) => {
       if (startY.current === null) return
       const dy = e.touches[0].clientY - startY.current
-      // Finger moving up, or the page has started scrolling: this is a scroll, let it go.
+
       if (dy <= 0 || pageScrollTop() > 0) { startY.current = null; pullRef.current = 0; setPull(0); return }
-      e.preventDefault()                                   // we handle this drag, not the page
+      e.preventDefault()
       const damped = Math.min(MAX, dy * 0.5)
       pullRef.current = damped
       setPull(damped)

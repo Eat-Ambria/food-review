@@ -1,9 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   The one loading spinner (follows the text colour).
-// USED BY
-//   Button, FullScreenLoader, inline "working…" states
-// =============================================================================
+// The loading spinner.
 export function Spinner({ className = 'size-4', label }: { className?: string; label?: string }) {
   return (
     <span role={label ? 'status' : undefined} aria-label={label}

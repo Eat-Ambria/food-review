@@ -1,15 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Everything the app does to log in, log out, load the profile and change
-//   the PIN.
-// WHY IT EXISTS
-//   Keeps auth calls out of the UI. Pages call login() or changePin() and get
-//   back a plain result; they never deal with Supabase details.
-// USED BY
-//   contexts/AuthContext.tsx
-// DEPENDS ON
-//   Edge Function auth-login; SQL function change_my_pin
-// =============================================================================
+// Login, logout, loading the profile and changing the PIN.
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import type { AppUser, LoginFailReason, LoginResult } from '../types/auth'
@@ -20,7 +9,7 @@ export async function login(username: string, pin: string): Promise<LoginResult>
   })
 
   if (error) {
-    // The function answered with an error status (401/403/429…): read its message.
+
     if (error instanceof FunctionsHttpError) {
       try {
         const body = await error.context.json()
@@ -30,7 +19,7 @@ export async function login(username: string, pin: string): Promise<LoginResult>
           message: body?.error ?? 'Login failed.',
           attemptsLeft: body?.attempts_left,
         }
-      } catch { /* not JSON — fall through to the generic message */ }
+      } catch { }
     }
     return {
       ok: false,
@@ -53,7 +42,6 @@ export async function logout(): Promise<void> {
   await supabase.auth.signOut()
 }
 
-/** The signed-in user's own app_users row (RLS only lets them read their own). */
 export async function fetchMyProfile(userId: string): Promise<AppUser | null> {
   const { data, error } = await supabase
     .from('app_users')

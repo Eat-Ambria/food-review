@@ -1,22 +1,7 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Submits a reviewed recording: uploads the audio to private storage, then
-//   asks the process-issue function to save it and extract the issues.
-// WHY IT EXISTS
-//   • Safe to repeat: the audio path and the submission are both keyed by the
-//     recording's client_submission_id. Pressing Submit again after a network
-//     drop finds what was already saved instead of creating a duplicate.
-//   • The draft on the phone is deleted only after the server confirms it has
-//     the submission (see RecordPage).
-// USED BY
-//   pages/Recording/RecordPage.tsx
-// DEPENDS ON
-//   Storage bucket "recordings" (migration 9), Edge Function process-issue
-// =============================================================================
+// Submits a recording: uploads the audio and asks the server to make the issues.
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 
-/** One extracted issue. Each has its own item, venue and event (one recording may cover several venues). */
 export interface SubmittedIssue {
   category_raw: string | null
   item: string | null
@@ -36,7 +21,6 @@ export interface SubmitResult {
   already_submitted?: boolean
 }
 
-/** The server found an almost identical complaint from the same person in the last 2 hours. */
 export interface DuplicateInfo {
   submission_id: string
   created_at: string
@@ -55,14 +39,12 @@ function extFor(mime: string): string {
   return 'webm'
 }
 
-/** Where the audio goes. Fixed by user + recording id, so it is known before uploading. */
 function audioPathFor(userId: string, clientId: string, mime: string): string {
   return `${userId}/${clientId}.${extFor(mime.split(';')[0] || 'audio/webm')}`
 }
 
-/** Uploads the original audio once. "Already exists" counts as success (a retry). */
 async function uploadAudio(path: string, blob: Blob, mime: string): Promise<void> {
-  const contentType = mime.split(';')[0] || 'audio/webm'      // storage checks the plain type
+  const contentType = mime.split(';')[0] || 'audio/webm'
   const { error } = await supabase.storage.from('recordings').upload(path, blob, { contentType, upsert: false })
   if (error && !/exists|duplicate/i.test(error.message)) {
     throw new Error(navigator.onLine ? `Could not upload the recording: ${error.message}` : 'You are offline. Your recording is saved; submit again when online.')
@@ -78,14 +60,13 @@ export async function submitRecording(input: {
   reviewedTranscript: string
   rawTranscript: string | null
   transcriptionMeta: Record<string, unknown> | undefined
-  allowDuplicate?: boolean      // user saw the "already sent" warning and chose to send anyway
-  chosenCalendarEventId?: string | null   // recorder's pick when the event was uncertain ('none' = none)
+  allowDuplicate?: boolean
+  chosenCalendarEventId?: string | null
 }): Promise<SubmitResult> {
-  // The audio upload and the processing run AT THE SAME TIME (the path is known
-  // in advance), so the recorder doesn't wait for one and then the other.
+
   const audioPath = audioPathFor(input.userId, input.clientSubmissionId, input.mimeType)
   const upload = uploadAudio(audioPath, input.blob, input.mimeType)
-  upload.catch(() => { /* checked below, after processing */ })
+  upload.catch(() => { })
 
   const { data, error } = await supabase.functions.invoke('process-issue', {
     body: {
@@ -112,9 +93,7 @@ export async function submitRecording(input: {
     }
     throw new Error(message)
   }
-  // Issues are saved; make sure the audio got there too (one more try). If it
-  // still fails, the error keeps the draft, and tapping Submit again finishes
-  // the upload (the submission itself is never created twice).
+
   try { await upload } catch { await uploadAudio(audioPath, input.blob, input.mimeType) }
   return data as SubmitResult
 }

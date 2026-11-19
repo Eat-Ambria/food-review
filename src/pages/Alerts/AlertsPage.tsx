@@ -1,20 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Admin → Serious alerts: the keywords that make a complaint "serious", who
-//   receives the WhatsApp alert.
-// WHY IT EXISTS
-//   When a submitted complaint contains one of these words (Hindi or English),
-//   the process-issue function flags it Serious and sends a WhatsApp message to
-//   every POC who has a mobile number, through Whapi.Cloud (the same service as
-//   the attendance "Aria" bot). Matching is on whole words: "aag" does not match
-//   inside "aage".
-//   The recipients list shows every POC, and points out who has no usable
-//   mobile number (add it under Users).
-// USED BY
-//   App.tsx route "/admin/alerts"
-// DEPENDS ON
-//   table alert_keywords (migration 16)
-// =============================================================================
+// Admin page to manage the serious-issue keywords and see who gets the WhatsApp alerts.
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -28,9 +12,7 @@ import { Icon } from '../../components/Icon'
 
 interface Keyword { id: string; keyword: string }
 
-// Starting ideas, shown as one-tap suggestions (nothing is added until tapped).
-const SUGGESTIONS = ['aag', 'आग', 'fire', 'dhuan', 'धुआं', 'smoke', 'short circuit', 'current', 'करंट', 'chot', 'चोट',
-  'injury', 'ambulance', 'behosh', 'बेहोश', 'gas leak', 'police', 'ladai', 'लड़ाई', 'fight', 'chori', 'चोरी', 'food poisoning', 'ulti', 'उल्टी']
+const SUGGESTIONS = ['food poisoning', 'ulti', 'aag', 'injury']
 
 const usableNumber = (m: string | null) => {
   const d = (m ?? '').replace(/\D/g, '')
@@ -47,7 +29,7 @@ export function AlertsPage() {
     const { data, error: e } = await supabase.from('alert_keywords').select('id, keyword').order('created_at')
     if (e) setError('Could not load keywords. ' + e.message)
     else setKeywords((data ?? []) as Keyword[])
-    try { setPocs((await listUsers()).filter((u) => u.is_active && rolesOf(u).includes('poc'))) } catch { /* shown as empty */ }
+    try { setPocs((await listUsers()).filter((u) => u.is_active && rolesOf(u).includes('poc'))) } catch { }
   }, [])
   useEffect(() => { void load() }, [load])
 
@@ -78,7 +60,7 @@ export function AlertsPage() {
       {error && <Alert tone="danger" className="mb-4">{error}</Alert>}
 
       <div className="space-y-4">
-        {/* Keywords */}
+
         <Card as="section" className="p-5 md:p-6">
           <SectionHeader title={<>Keywords{keywords.length > 0 && <span className="ml-2 font-semibold text-muted">{keywords.length}</span>}</>}
             description={<>Add both spellings, e.g. <b className="text-ink">aag</b> and <b className="text-ink">आग</b>. Whole words only: &ldquo;aag&rdquo; does not match &ldquo;aage&rdquo;.</>} />
@@ -113,7 +95,6 @@ export function AlertsPage() {
           )}
         </Card>
 
-        {/* Recipients */}
         <Card as="section" className="p-5 md:p-6">
           <SectionHeader title="Who gets the WhatsApp" description="Every active POC with a mobile number (not the person who recorded it)." />
           {pocs.length === 0 ? (

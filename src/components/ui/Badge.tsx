@@ -1,11 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   A small coloured pill for statuses (Active, Locked, Default PIN, Ready…).
-// WHY IT EXISTS
-//   Gives every status in the app the same look, and the colour always comes
-//   with text, so it is still readable for colour-blind users. `dot` adds a
-//   small leading dot for live/state badges.
-// =============================================================================
+// Small coloured status pill (Active, Locked, Ready…).
 import type { ReactNode } from 'react'
 
 export type BadgeTone = 'neutral' | 'ok' | 'warn' | 'danger' | 'accent' | 'solid-danger'

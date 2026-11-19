@@ -1,3 +1,4 @@
+// Tests for the CSV user import.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('./userAdminService', () => ({ createUsers: vi.fn() }))
@@ -112,7 +113,7 @@ describe('buildPreview', () => {
     const rows = buildPreview(parsed([{ name: 'Rahul Sharma' }, { name: 'Rahul  sharma' }]), existing, 'recorder')
     expect(rows.map((r) => r.username)).toEqual(['rahul.sharma2', 'rahul.sharma3'])
     expect(rows.every((r) => r.usernameWasGenerated)).toBe(true)
-    // same name twice -> warning on both, both kept
+
     expect(rows.map((r) => r.state)).toEqual(['warning', 'warning'])
     expect(rows.every((r) => r.include)).toBe(true)
   })

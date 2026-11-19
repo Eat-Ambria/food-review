@@ -1,24 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Browser-side transcription: cut the recording into WAV chunks, send each
-//   to the transcribe-audio Edge Function, and join the text.
-// WHY IT EXISTS
-//   • Retries: a failed chunk is retried automatically (twice, with a short
-//     wait) when the error is temporary. A finished chunk is never sent again,
-//     so a retry after a network drop only pays for what's missing.
-//   • Progress: reports "chunk 2 of 4" for the screen.
-//   • Every chunk carries the recording's client_submission_id. The server uses
-//     it to return saved text for a chunk it has already done (never paid
-//     twice) and to apply the per-user limits. "busy" (the same chunk is in
-//     progress elsewhere) → wait and ask again. "limited" → give up for now and
-//     report WHEN to try again (retryAt); the screen schedules that retry.
-//   • Provider swap: the screen only knows transcribe(). Switching provider or
-//     model later only touches this file and the Edge Function.
-// USED BY
-//   pages/Recording/RecordPage.tsx
-// DEPENDS ON
-//   utils/audioChunks.ts, Edge Function transcribe-audio
-// =============================================================================
+// Splits a recording into parts and gets the text from Sarvam.
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import { toWavChunks } from '../utils/audioChunks'
@@ -27,13 +7,13 @@ export interface ChunkResult { text: string; language: string | null; requestId:
 
 export interface TranscriptionState {
   total: number
-  results: (ChunkResult | null)[]   // null = not done yet
+  results: (ChunkResult | null)[]
 }
 
 export class TranscriptionError extends Error {
   retryable: boolean
   partial: TranscriptionState | null
-  /** Set when a usage limit was hit: the earliest time to try again (ISO). */
+
   retryAt: string | null
   constructor(message: string, retryable: boolean, partial: TranscriptionState | null, retryAt: string | null = null) {
     super(message)
@@ -44,8 +24,8 @@ export class TranscriptionError extends Error {
 }
 
 const AUTO_RETRIES = 2
-const BUSY_RETRIES = 8      // "busy" = another tab is doing this chunk; its answer will be saved shortly
-const PARALLEL = 5          // a 2-min recording is at most 5 parts; Sarvam pay-as-you-go allows 60 requests/min
+const BUSY_RETRIES = 8
+const PARALLEL = 5
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 async function sendChunk(blob: Blob, index: number, clientId: string): Promise<ChunkResult> {
@@ -71,9 +51,9 @@ async function sendChunk(blob: Blob, index: number, clientId: string): Promise<C
         retryable = body?.retryable !== false
         retryAt = body?.retry_after ?? null
         busy = body?.busy === true
-      } catch { /* keep defaults */ }
+      } catch { }
     }
-    if (busy && busyCount < BUSY_RETRIES) {     // doesn't use up the normal retries
+    if (busy && busyCount < BUSY_RETRIES) {
       busyCount++
       attempt--
       await wait(4000)
@@ -85,10 +65,6 @@ async function sendChunk(blob: Blob, index: number, clientId: string): Promise<C
   }
 }
 
-/**
- * Transcribes a recording. Pass `previous` (from a failed attempt) to only
- * redo the chunks that are still missing.
- */
 export async function transcribe(
   recording: Blob,
   clientId: string,
@@ -106,7 +82,7 @@ export async function transcribe(
   }
 
   const { chunks } = prepared
-  // Re-use earlier results only if the chunking is identical (same recording).
+
   const state: TranscriptionState = previous && previous.total === chunks.length
     ? { total: chunks.length, results: [...previous.results] }
     : { total: chunks.length, results: Array(chunks.length).fill(null) }

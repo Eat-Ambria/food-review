@@ -1,24 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   A list of issues grouped by the dish / thing they are about.
-// WHY IT EXISTS
-//   One recording can have many problems, several about the same dish:
-//
-//     [fork] Dal Makhani ×2
-//       │ [Kitchen] Served cold at the buffet…
-//       │ [Kitchen] Too much salt…
-//     [fork] Paneer Tikka
-//       │ [Kitchen] Undercooked…
-//     [tag] Washroom
-//       │ [Housekeeping] Not cleaned…
-//     Other issues                 ← problems with no specific item
-//       │ …
-//
-//   The dish name appears once; its problems sit under it. The caller decides
-//   how each single issue looks (renderIssue), so this works for any issue type.
-// USED BY
-//   pages/MySubmissions/MySubmissionsPage.tsx, pages/Recording/RecordPage.tsx
-// =============================================================================
+// Lists issues grouped by dish or thing (e.g. Paneer ×2, then its problems).
 import type { ReactNode } from 'react'
 import { ItemTag } from './ItemTag'
 import { groupByItem } from '../utils/itemGroups'

@@ -1,14 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Types for venues (our master list) and Event Calendar bookings.
-// WHY IT EXISTS
-//   Keeps the shapes used by the Venues admin page, the event matcher and the
-//   Record page's "Event details" card in one place.
-// USED BY
-//   services/venueService.ts, services/eventCalendarService.ts,
-//   utils/eventDetect.ts, components/EventDetailsCard.tsx, pages/Venues/*
-// =============================================================================
-
+// Types for venues and Calendar bookings.
 export interface VenueAlias { id: string; venue_id: string; alias: string; alias_normalized: string }
 
 export interface Venue {
@@ -21,7 +11,6 @@ export interface Venue {
   aliases: VenueAlias[]
 }
 
-/** A category from the Event Calendar (ap, am, villa…). */
 export interface CalendarCategory {
   venue_id: string
   name: string
@@ -31,7 +20,6 @@ export interface CalendarCategory {
   is_active: boolean
 }
 
-/** A booking from the Event Calendar: only the fields needed to recognise it. */
 export interface CalendarEvent {
   id: string
   venue_id: string
@@ -51,7 +39,6 @@ export interface CalendarEvent {
   venue_name: string | null
 }
 
-/** One booking the matcher considered, with how it scored. */
 export interface MatchCandidate {
   calendar_event_id: string
   date: string
@@ -68,15 +55,10 @@ export interface MatchCandidate {
   reasons: string[]
 }
 
-/**
- * Result of identifying the event from what was said (event-calendar "match").
- * Nobody picks by hand: matched = one clear winner; ambiguous = a tie that
- * Admin resolves later; the others mean not enough was said or nothing was booked.
- */
 export interface EventMatch {
   status: 'matched' | 'ambiguous' | 'no_events' | 'not_enough_info' | 'calendar_paused'
   date: string | null
-  date_source?: 'explicit' | 'relative' | 'assumed_today'   // assumed_today = no date said → recording day
+  date_source?: 'explicit' | 'relative' | 'assumed_today'
   venue: { id: string; name: string } | null
   venue_candidates?: { id: string; name: string; via: string }[]
   event: MatchCandidate | null

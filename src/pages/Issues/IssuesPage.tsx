@@ -1,32 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   The Issues page for POCs and Admin: every complaint, grouped
-//   Date → Venue → Event, with filters.
-// WHY IT EXISTS
-//   Decision: every POC sees every issue. There is no assignment and no
-//   "resolve" button; this page simply shows what came up, where, and at which
-//   event, so the right people act on it. It refreshes itself every minute
-//   while open.
-//   Layout (from the design mockup):
-//     top bar      "Issues" title (desktop, via useBarTitle)
-//     toolbar      [Today] [date ▾]                     N Issues | [Filter]
-//                  Filter opens venue / category / search / custom dates.
-//     venue card   pin + venue name, "1 Function • 8 Issues", collapse ▾
-//       function   shift icon + shift | guest - function
-//       items      Items: Food ×3, Chap ×1 …                         [8]
-//       table      Department | Priority | Item | Issue | Reported by | Time
-//   Opened from a notification (?submission=<id>): jumps to the day(s) of that
-//   complaint and highlights its issues, with "Back to Today". The id is then
-//   removed from the address, so a refresh shows the normal Today list.
-//   Grouping keys:
-//     date  = the event's date (or the recording day if no event was found)
-//     venue = the issue's own venue (one recording can cover several venues)
-//     event = the Calendar booking (guest · function · shift), or "Event not identified"
-// USED BY
-//   App.tsx route "/issues"
-// DEPENDS ON
-//   services/issueService.ts (SQL function issues_feed), services/venueService.ts
-// =============================================================================
+// Shows all issues to POCs and Admin, grouped by day, venue and function, with filters.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { fetchIssues, listCategories, submissionDays, type FeedIssue } from '../../services/issueService'
@@ -57,7 +29,7 @@ const fullDate = (iso: string) => {
   const [y, m, d] = iso.split('-').map(Number)
   return new Date(y, m - 1, d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
 }
-/** "Today" / "Yesterday" / null, shown next to the full date. */
+
 const relativeDay = (iso: string) => {
   const t = istToday()
   return iso === t ? 'Today' : iso === shift(t, -1) ? 'Yesterday' : null
@@ -93,8 +65,7 @@ function group(rows: FeedIssue[]): DayGroup[] {
           issues,
         }
       })
-        // Functions in the order of the day (Morning → Lunch → Sundowner → Dinner);
-        // anything not matched to a function goes last.
+
         .sort((a, b) => Number(b.identified) - Number(a.identified)
           || (SHIFT_ORDER[a.shift ?? ''] ?? 9) - (SHIFT_ORDER[b.shift ?? ''] ?? 9))
       return { key: vKey, name: em.values().next().value?.[0]?.venue_name ?? 'Venue not identified', events,
@@ -105,7 +76,7 @@ function group(rows: FeedIssue[]): DayGroup[] {
 }
 
 export function IssuesPage() {
-  const [range, setRange] = useState<Range>('today')   // default: today's issues
+  const [range, setRange] = useState<Range>('today')
   const [from, setFrom] = useState(istToday())
   const [to, setTo] = useState(istToday())
   const [venueId, setVenueId] = useState('')
@@ -118,7 +89,7 @@ export function IssuesPage() {
   const [error, setError] = useState<string | null>(null)
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
   const [filtersOpen, setFiltersOpen] = useState(false)
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())   // venue cards folded by the user
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const toggleVenue = (key: string) => setCollapsed((c) => { const n = new Set(c); if (n.has(key)) n.delete(key); else n.add(key); return n })
   useBarTitle('Issues')
 
@@ -137,11 +108,9 @@ export function IssuesPage() {
     if (r === '30d') { setFrom(shift(t, -29)); setTo(t) }
   }
 
-  // Search from the top bar arrives as ?q=… → fill the box and look back 30 days.
   const [params, setParams] = useSearchParams()
   const urlQ = params.get('q')
 
-  // Opened from a notification: show that complaint's day and highlight it.
   const urlSub = params.get('submission')
   const [focusId, setFocusId] = useState<string | null>(null)
   useEffect(() => {
@@ -150,7 +119,7 @@ export function IssuesPage() {
     void submissionDays(urlSub).then((d) => {
       if (gone) return
       if (d) { setRange('custom'); setFrom(d.from); setTo(d.to); setFocusId(urlSub) }
-      // Drop the id from the address: a refresh then shows the normal Today list.
+
       setParams((p) => { p.delete('submission'); return p }, { replace: true })
     }).catch(() => setParams((p) => { p.delete('submission'); return p }, { replace: true }))
     return () => { gone = true }
@@ -176,7 +145,6 @@ export function IssuesPage() {
 
   useEffect(() => { void load() }, [load])
 
-  // Refresh quietly every minute while the tab is visible.
   useEffect(() => {
     const id = setInterval(() => { if (document.visibilityState === 'visible') void load(true) }, 60_000)
     return () => clearInterval(id)
@@ -199,13 +167,12 @@ export function IssuesPage() {
 
   return (
     <div className="mx-auto max-w-[110rem]">
-      {/* Phones have no top bar title, so the page shows it. */}
+
       <div className="mb-4 flex items-center gap-3 md:hidden">
         <h1 className="font-serif text-[2.1rem] font-medium leading-none tracking-[-0.02em]">Issues</h1>
         {!loading && <span className="rounded-full bg-ink/[0.07] px-2.5 py-0.5 text-sm font-semibold tabular-nums text-ink/80">{filtered.length}</span>}
       </div>
 
-      {/* ---------------- Toolbar ---------------- */}
       <div className="flex items-center gap-1.5 sm:gap-2.5">
         <button type="button" onClick={() => applyRange('today')} aria-pressed={range === 'today'}
           className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-[15px] font-semibold transition-colors sm:h-11 sm:px-4
@@ -216,7 +183,7 @@ export function IssuesPage() {
         <label className="relative min-w-0">
           <span className="sr-only">Date range</span>
           <select value={range} onChange={(e) => applyRange(e.target.value as Range)}
-            className="h-10 max-w-full cursor-pointer appearance-none truncate rounded-xl bg-transparent pl-2 pr-8 text-[15px] font-medium text-ink outline-none sm:h-11 sm:pr-9 transition-colors hover:bg-ink/[0.04] focus-visible:ring-4 focus-visible:ring-marigold/15">
+            className="h-10 max-w-full cursor-pointer appearance-none truncate rounded-xl bg-transparent pl-2 pr-8 text-[15px] font-medium text-ink outline-none sm:h-11 sm:pr-9 transition-colors hover:bg-ink/[0.04] focus-visible:ring-4 focus-visible:ring-ink/[0.05]">
             {(['today', 'yesterday', '7d', '30d', 'custom'] as const).map((r) => <option key={r} value={r}>{rangeLabel(r)}</option>)}
           </select>
           <Icon name="chevron" className="pointer-events-none absolute right-2.5 top-1/2 size-[18px] -translate-y-1/2 text-ink/70" />
@@ -236,7 +203,6 @@ export function IssuesPage() {
         </div>
       </div>
 
-      {/* Filter panel: venue, category, search, custom dates, refresh. */}
       {(filtersOpen || (range === 'custom' && !focusId)) && (
         <Card className="sheet-in mt-3 p-3">
           <div className="grid grid-cols-2 gap-2 lg:flex lg:items-center">
@@ -299,7 +265,7 @@ export function IssuesPage() {
           <div className="space-y-8">
             {groups.map((d) => (
               <section key={d.day} aria-label={fullDate(d.day)}>
-                {/* Day heading only when more than one day is on screen. */}
+
                 {multiDay && (
                   <h2 className="mb-3 flex items-baseline gap-2">
                     <span className="font-serif text-[1.5rem] leading-none">{relativeDay(d.day) ?? fullDate(d.day)}</span>
@@ -308,7 +274,6 @@ export function IssuesPage() {
                   </h2>
                 )}
 
-                {/* One card per venue; its functions are sections inside it. */}
                 <div className="space-y-5">
                   {d.venues.map((v) => {
                     const fnCount = v.events.filter((e) => e.identified).length
@@ -316,11 +281,11 @@ export function IssuesPage() {
                     const folded = collapsed.has(cardKey)
                     return (
                       <Card key={v.key} className="card-hover overflow-hidden border-transparent! p-2">
-                        {/* Venue header (tap to fold / unfold) */}
+
                         <button type="button" onClick={() => toggleVenue(cardKey)} aria-expanded={!folded}
                           className="pin-hover flex w-full items-center gap-3 rounded-xl bg-[#fbf3e3] px-4 py-3.5 text-left transition-colors hover:bg-[#f8ebd0]">
                           <Icon name="pin" className={`pin-bounce size-[22px] shrink-0 self-start sm:self-center ${v.key === 'none' ? 'text-faint' : 'text-marigold'}`} />
-                          {/* Phone: name (full, may wrap) with the counts below. sm+: one line. */}
+
                           <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3">
                             <span className="min-w-0 text-xl font-bold leading-tight tracking-tight sm:flex-1 sm:truncate">{v.name}</span>
                             <span className="shrink-0 text-[13px] font-semibold tabular-nums text-ink/70 sm:text-sm sm:text-ink">
@@ -335,7 +300,7 @@ export function IssuesPage() {
                           const items = itemCounts(e.issues, (i) => i.item, (i) => i.category)
                           return (
                             <div key={e.key}>
-                              {/* Function: shift icon + shift | guest - function · area */}
+
                               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-3 pt-4">
                                 {e.identified ? (
                                   <>
@@ -353,7 +318,6 @@ export function IssuesPage() {
                                 )}
                               </div>
 
-                              {/* Items: each dish / thing once with a count; total on the right. */}
                               <div className="flex items-center gap-2 border-t border-line/70 px-4 py-3">
                                 <span className="text-sm text-ink/80">Items:</span>
                                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
@@ -364,7 +328,6 @@ export function IssuesPage() {
                                 <span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-ink/[0.06] px-2 text-sm font-semibold tabular-nums">{e.issues.length}</span>
                               </div>
 
-                              {/* The issues as a table, same dish / thing together */}
                               <div className="pb-1">
                                 <IssueTableHead />
                                 <ul className="divide-y divide-line">

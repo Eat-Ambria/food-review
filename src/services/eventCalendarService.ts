@@ -1,15 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Browser-side calls to the event-calendar Edge Function.
-// WHY IT EXISTS
-//   The Calendar key never reaches the browser. The app asks our function,
-//   which reads the Calendar and returns only the fields needed.
-//   matchEvent() asks the server which booking a transcript is about; the
-//   rules live only on the server (event-calendar function). A short cache
-//   (per day + venues) avoids re-asking every time the user taps between venues.
-// USED BY
-//   pages/Recording/RecordPage.tsx (matchEvent), pages/Venues/VenuesPage.tsx (categories)
-// =============================================================================
+// Asks the server which Calendar function a transcript is about.
 import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import type { CalendarCategory, CalendarEvent, EventMatch } from '../types/events'
@@ -19,7 +8,7 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
   if (error) {
     let message = navigator.onLine ? 'Could not reach the Event Calendar.' : 'You are offline.'
     if (error instanceof FunctionsHttpError) {
-      try { message = (await error.context.json())?.error ?? message } catch { /* keep default */ }
+      try { message = (await error.context.json())?.error ?? message } catch { }
     }
     throw new Error(message)
   }
@@ -46,13 +35,11 @@ export async function fetchEventsOn(date: string, calendarVenueIds: string[]): P
   return value
 }
 
-/** "Wedding" (or the "Other" text). */
 export function functionNameOf(e: CalendarEvent): string | null {
   if (e.event_type === 'Other') return e.event_type_other || 'Other'
   return e.event_type || null
 }
 
-/** Identify the booking a transcript is about. Never throws for "not found"; only for network/setup errors. */
 export async function matchEvent(transcript: string): Promise<EventMatch> {
   return call<EventMatch>({ action: 'match', transcript })
 }

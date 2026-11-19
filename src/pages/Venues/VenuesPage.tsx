@@ -1,19 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   Admin → Venues: the venue master list and the names people use for each
-//   venue (aliases).
-// WHY IT EXISTS
-//   The event matcher recognises a venue only through this list: venue name,
-//   aliases (AP / Pushpanjali / पुष्पांजलि) and its lawns/halls. Venues are
-//   imported from the Event Calendar, so each is linked to its calendar
-//   category (ap, am, …). Admin can add more aliases at any time, including
-//   Devanagari spellings, because Sarvam often writes Hindi-sounding names in
-//   Hindi script.
-// USED BY
-//   App.tsx route "/admin/venues"
-// DEPENDS ON
-//   services/venueService.ts, services/eventCalendarService.ts
-// =============================================================================
+// Admin page to manage venues and the other names people use for them.
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { addAlias, defaultAliases, importFromCalendar, listVenues, removeAlias, saveVenue } from '../../services/venueService'
 import { fetchCalendarCategories } from '../../services/eventCalendarService'
@@ -76,7 +61,7 @@ export function VenuesPage() {
     try {
       const cats = (await fetchCalendarCategories()).filter((c) => c.is_active)
       setCategories(cats)
-      // Own venues ticked by default; the rest (decor, catering, tender…) left for the admin to decide.
+
       setPicked(new Set(cats.filter((c) => c.category_type === 'venue').map((c) => c.venue_id)))
     } catch (e) {
       setImportError((e as Error).message)
@@ -193,7 +178,6 @@ export function VenuesPage() {
         )}
       </div>
 
-      {/* Import from Calendar */}
       <Modal open={importOpen} title="Import venues from Calendar" onClose={() => setImportOpen(false)}
         description="Safe to run again: existing venues are refreshed, not duplicated."
         footer={<>
@@ -214,7 +198,6 @@ export function VenuesPage() {
         </div>
       </Modal>
 
-      {/* Add venue by hand */}
       <Modal open={addOpen} title="Add venue" onClose={() => setAddOpen(false)}
         footer={<>
           <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>

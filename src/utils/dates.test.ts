@@ -1,3 +1,4 @@
+// Tests for the date helpers.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { istToday, shiftDay, rangeDates, istDayStart, istDayEnd, istDayOf, relativeDay } from './dates'
 
@@ -6,10 +7,10 @@ describe('dates (IST)', () => {
   afterEach(() => { vi.useRealTimers() })
 
   it('istToday uses India time, not UTC', () => {
-    // 2026-11-17 20:00 UTC = 2026-11-18 01:30 IST
+
     vi.setSystemTime(new Date('2026-11-17T20:00:00Z'))
     expect(istToday()).toBe('2026-11-18')
-    // 2026-11-17 18:29 UTC = 23:59 IST, still the 17th
+
     vi.setSystemTime(new Date('2026-11-17T18:29:00Z'))
     expect(istToday()).toBe('2026-11-17')
   })
@@ -17,7 +18,7 @@ describe('dates (IST)', () => {
   it('shiftDay crosses month and year boundaries', () => {
     expect(shiftDay('2026-11-30', 1)).toBe('2026-12-01')
     expect(shiftDay('2027-01-01', -1)).toBe('2026-12-31')
-    expect(shiftDay('2028-02-28', 1)).toBe('2028-02-29') // leap year
+    expect(shiftDay('2028-02-28', 1)).toBe('2028-02-29')
   })
 
   it('rangeDates presets', () => {

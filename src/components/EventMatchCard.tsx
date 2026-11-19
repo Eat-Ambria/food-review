@@ -1,21 +1,4 @@
-// =============================================================================
-// WHAT THIS FILE IS
-//   A read-only card on the Record page that shows which Calendar event the
-//   transcript was matched to.
-// WHY IT EXISTS
-//   The recorder never picks an event by hand; it is identified from what was
-//   said. This card only shows the result, so the recorder can see it was
-//   understood. If something is missing (no venue / date, or a tie between two
-//   bookings), it says what to mention. They fix it by editing the transcript,
-//   and matching runs again automatically.
-//   Ties are never guessed. When it is not certain (e.g. a date but no venue,
-//   and several functions that day), the card lists that day's bookings and the
-//   recorder can pick one, or "none of these". The server accepts the pick only
-//   if it is one of the bookings the matcher found. Picking is optional: without
-//   it, Admin links the event later.
-// USED BY
-//   pages/Recording/RecordPage.tsx
-// =============================================================================
+// Shows which Calendar function a recording was matched to, and lets the recorder pick one when unsure.
 import type { EventMatch } from '../types/events'
 import { Icon } from './Icon'
 import { Badge } from './ui/Badge'
@@ -32,7 +15,7 @@ function prettyDate(iso: string | null): string {
 
 export function EventMatchCard({ match, loading, error, chosenId, onChoose }: {
   match: EventMatch | null; loading: boolean; error: string | null
-  chosenId: string | null                          // recorder's pick ('none' = none of these)
+  chosenId: string | null
   onChoose: (id: string | null) => void
 }) {
   return (
