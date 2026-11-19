@@ -601,10 +601,12 @@ export function RecordPage() {
 
           {submitError && <Alert tone="danger">{submitError}</Alert>}
 
-          {/* Actions. Phones: a solid bar stuck to the very bottom of the screen
-              (above the iPhone home indicator), so Submit is always in reach.
-              Wider screens: plain buttons under the cards. */}
-          <div className="sticky bottom-0 z-20 -mx-4 -mb-[calc(2rem+env(safe-area-inset-bottom))] rounded-t-2xl bg-surface px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_30px_-18px_rgb(23_32_51/0.35)] ring-1 ring-black/5 md:static md:mx-0 md:mb-0 md:rounded-none md:bg-transparent md:p-0 md:shadow-none md:ring-0">
+          {/* Actions. Phones: a solid bar FIXED to the very bottom of the screen
+              (above the iPhone home indicator), whether the page is short or
+              long, so Submit is always in reach; the spacer keeps the last card
+              from hiding behind it. Wider screens: plain buttons under the cards. */}
+          <div aria-hidden="true" className="h-20 md:hidden" />
+          <div className="fixed inset-x-0 bottom-0 z-30 rounded-t-2xl bg-surface px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-12px_30px_-18px_rgb(23_32_51/0.35)] ring-1 ring-black/5 md:static md:rounded-none md:bg-transparent md:p-0 md:shadow-none md:ring-0">
             <div className="flex gap-2.5">
               <Button variant="secondary" size="lg" className="flex-1 px-3" onClick={() => setConfirmDiscard(true)}
                 disabled={tx.phase === 'running' || submitting} title={tx.phase === 'running' ? 'Wait for the transcript first' : undefined}>
