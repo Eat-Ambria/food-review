@@ -14,6 +14,7 @@ import { ROLE_LABEL, rolesLabel, rolesOf, type Role } from '../../types/auth'
 import type { ManagedUser } from '../../types/users'
 import { downloadCsv, toCsv } from '../../utils/csv'
 import { UserFormModal } from './UserFormModal'
+import { personName } from '../../utils/personName'
 
 type StatusFilter = 'all' | 'active' | 'inactive' | 'locked' | 'default_pin'
 
@@ -109,10 +110,10 @@ export function UserManagementPage() {
     try {
       if (confirm.kind === 'reset') {
         await resetPin(confirm.user.id)
-        showToast(`PIN reset for ${confirm.user.name}. They sign in with 0000 and must change it.`)
+        showToast(`PIN reset for ${personName(confirm.user.name)}. They sign in with 0000 and must change it.`)
       } else {
         await unlockUser(confirm.user.id)
-        showToast(`${confirm.user.name} is unlocked.`)
+        showToast(`${personName(confirm.user.name)} is unlocked.`)
       }
       setConfirm(null)
       await load()
@@ -216,7 +217,7 @@ export function UserManagementPage() {
                         <div className="flex items-center gap-3">
                           <Avatar u={u} />
                           <div className="min-w-0">
-                            <p className="truncate font-semibold">{u.name}{u.id === me?.id && <span className="ml-1.5 text-xs font-medium text-muted">(you)</span>}</p>
+                            <p className="truncate font-semibold">{personName(u.name)}{u.id === me?.id && <span className="ml-1.5 text-xs font-medium text-muted">(you)</span>}</p>
                             <p className="truncate text-xs text-muted">{u.username}</p>
                           </div>
                         </div>
@@ -239,7 +240,7 @@ export function UserManagementPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="truncate text-[15px] font-bold">{u.name}{u.id === me?.id && <span className="ml-1.5 text-xs font-medium text-muted">(you)</span>}</p>
+                          <p className="truncate text-[15px] font-bold">{personName(u.name)}{u.id === me?.id && <span className="ml-1.5 text-xs font-medium text-muted">(you)</span>}</p>
                           <p className="truncate text-xs text-muted">@{u.username}</p>
                         </div>
                         <StatusBadges u={u} />
@@ -272,8 +273,8 @@ export function UserManagementPage() {
         </>}>
         <p className="text-sm leading-relaxed text-muted">
           {confirm?.kind === 'reset'
-            ? <><b className="text-ink">{confirm.user.name}</b>&rsquo;s PIN will become <b className="text-ink">0000</b>. They must set a new PIN at their next sign-in. Any lock is also cleared.</>
-            : <><b className="text-ink">{confirm?.user.name}</b> will be able to try signing in again right away.</>}
+            ? <><b className="text-ink">{personName(confirm.user.name)}</b>&rsquo;s PIN will become <b className="text-ink">0000</b>. They must set a new PIN at their next sign-in. Any lock is also cleared.</>
+            : <><b className="text-ink">{personName(confirm?.user.name)}</b> will be able to try signing in again right away.</>}
         </p>
       </Modal>
 

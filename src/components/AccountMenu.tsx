@@ -8,6 +8,7 @@ import { rolesLabel, rolesOf } from '../types/auth'
 import { Icon } from './Icon'
 import { Switch } from './ui/Layout'
 import { Spinner } from './ui/Spinner'
+import { personName } from '../utils/personName'
 
 const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('')
 
@@ -53,7 +54,7 @@ export function AccountMenu({ tone = 'light', withName = false }: { tone?: 'ligh
   return (
     <div className="relative" ref={boxRef}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="menu" aria-label="Account menu"
-        title={user.name}
+        title={personName(user.name)}
         className={`flex items-center gap-2.5 rounded-full p-1 transition-colors ${tone === 'dark' ? 'hover:bg-white/10' : `pr-2.5 hover:bg-ink/[0.05] ${open ? 'bg-ink/[0.05]' : ''}`}`}>
         <span className={`flex items-center justify-center rounded-full font-bold ${tone === 'dark'
           ? 'size-8 bg-marigold text-xs text-navy-900'
@@ -62,7 +63,7 @@ export function AccountMenu({ tone = 'light', withName = false }: { tone?: 'ligh
         </span>
         {withName && (
           <span className="sr-only">
-            <span className="block max-w-[10rem] truncate text-sm font-semibold">{user.name}</span>
+            <span className="block max-w-[10rem] truncate text-sm font-semibold">{personName(user.name)}</span>
             <span className="block max-w-[10rem] truncate text-xs text-muted">{rolesLabel(user)}</span>
           </span>
         )}
@@ -74,7 +75,7 @@ export function AccountMenu({ tone = 'light', withName = false }: { tone?: 'ligh
           <div className="flex items-center gap-3 px-4 py-4">
             <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-navy-800 text-sm font-bold text-white">{initials(user.name)}</span>
             <div className="min-w-0">
-              <p className="truncate font-bold">{user.name}</p>
+              <p className="truncate font-bold">{personName(user.name)}</p>
               <p className="truncate text-xs text-muted">@{user.username} · {rolesLabel(user)}</p>
             </div>
           </div>

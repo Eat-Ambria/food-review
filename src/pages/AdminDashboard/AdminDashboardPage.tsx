@@ -7,6 +7,7 @@ import { Alert, Card, EmptyState, ListSkeleton, PageHeader, SectionHeader, Skele
 import { Toast, useToast } from '../../components/ui/Toast'
 import { Badge } from '../../components/ui/Badge'
 import { Icon } from '../../components/Icon'
+import { personName } from '../../utils/personName'
 
 const istToday = () => new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10)
 const minusDays = (iso: string, n: number) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10) }
@@ -163,7 +164,7 @@ export function AdminDashboardPage() {
                       <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
                         <Badge tone={r.tone} dot>{r.text}</Badge>
                         <span className="text-xs text-muted">
-                          <span className="font-semibold text-ink/80">{a.recorded_by ?? 'Unknown'}</span>
+                          <span className="font-semibold text-ink/80">{personName(a.recorded_by) || 'Unknown'}</span>
                           {' · '}{new Date(a.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
                           {a.issue_count > 0 && <> · {a.issue_count} issue{a.issue_count === 1 ? '' : 's'}</>}
                         </span>

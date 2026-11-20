@@ -6,6 +6,7 @@ import { Icon } from './Icon'
 import { CategoryChip } from './CategoryChip'
 import { ItemTag } from './ItemTag'
 import { Spinner } from './ui/Spinner'
+import { personName } from '../utils/personName'
 
 export const ISSUE_COLS = 'sm:grid sm:grid-cols-[8.5rem_6.5rem_8rem_minmax(0,1fr)_8.5rem_7.75rem_1.25rem] sm:items-center sm:gap-x-4'
 
@@ -78,7 +79,7 @@ export function IssueCard({ issue, focused = false }: { issue: FeedIssue; focuse
           {issue.summary ?? issue.description}
         </span>
         <span className="flex items-center gap-2 text-xs text-muted sm:contents">
-          <span className="truncate font-medium text-ink/80 sm:text-sm">{issue.recorded_by ?? 'Unknown'}</span>
+          <span className="truncate font-medium text-ink/80 sm:text-sm">{personName(issue.recorded_by) || 'Unknown'}</span>
           <Reported issue={issue} />
           <Icon name="chevron" className={`row-chevron ml-auto size-4 text-ink/60 sm:ml-0 ${open ? 'rotate-180' : ''}`} />
         </span>

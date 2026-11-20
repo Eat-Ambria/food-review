@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/Button'
 import { inputClass } from '../../components/ui/Field'
 import { Alert, Card, PageHeader, SectionHeader } from '../../components/ui/Layout'
 import { Icon } from '../../components/Icon'
+import { personName } from '../../utils/personName'
 
 interface Keyword { id: string; keyword: string }
 
@@ -107,7 +108,7 @@ export function AlertsPage() {
                   <li key={p.id} className="flex items-center justify-between gap-3 px-3.5 py-2.5 text-sm">
                     <span className="flex min-w-0 items-center gap-2.5">
                       <Icon name={ok ? 'checkCircle' : 'alert'} className={`size-4 shrink-0 ${ok ? 'text-ok' : 'text-warn'}`} />
-                      <span className="truncate font-semibold">{p.name}</span>
+                      <span className="truncate font-semibold">{personName(p.name)}</span>
                     </span>
                     <span className={`shrink-0 text-xs tabular-nums ${ok ? 'text-muted' : 'font-semibold text-warn'}`}>{ok ? p.mobile_number : 'No mobile number'}</span>
                   </li>

@@ -575,7 +575,7 @@ async function queueSeriousWhatsApp(db: Db, submissionId: string, keywords: stri
     '',
     ...(issues ?? []).map((i, n) => `${n + 1}. *${i.category_raw ?? 'Other'}*${i.item ? ' · ' + i.item : ''}: ${i.ai_summary ?? ''}`),
     '',
-    `Recorded by ${(sub.recorder as { name?: string } | null)?.name ?? 'staff'} · ${when}`,
+    `Recorded by ${((sub.recorder as { name?: string } | null)?.name ?? '').replace(/\./g, ' ').replace(/\s+/g, ' ').trim() || 'staff'} · ${when}`,
     APP_URL ? `Open: ${APP_URL}issues` : null,
   ].filter((l) => l !== null) as string[]
   const body = lines.join('\n')

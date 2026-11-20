@@ -15,6 +15,7 @@ import {
 } from '../../services/csvImportService'
 import { listUsers } from '../../services/userAdminService'
 import { downloadCsv, toCsv } from '../../utils/csv'
+import { personName } from '../../utils/personName'
 
 type Step = 'upload' | 'filter' | 'preview' | 'importing' | 'results'
 type View = 'all' | 'included' | 'attention'
@@ -371,7 +372,7 @@ export function ImportUsersPage() {
               <p className="bg-subtle px-4 py-2.5 text-xs font-semibold text-muted">Failed rows</p>
               {results.filter((r) => r.outcome === 'failed').map((r) => (
                 <div key={r.lineNumber} className="flex flex-wrap justify-between gap-2 px-4 py-3 text-sm">
-                  <span><span className="text-muted">Line {r.lineNumber}</span> · <span className="font-semibold">{r.name}</span> <span className="text-xs text-muted">{r.username}</span></span>
+                  <span><span className="text-muted">Line {r.lineNumber}</span> · <span className="font-semibold">{personName(r.name)}</span> <span className="text-xs text-muted">{r.username}</span></span>
                   <span className="text-danger">{r.reason}</span>
                 </div>
               ))}
