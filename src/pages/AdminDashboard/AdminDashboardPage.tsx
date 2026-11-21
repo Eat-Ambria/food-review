@@ -12,15 +12,15 @@ import { personName } from '../../utils/personName'
 const istToday = () => new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10)
 const minusDays = (iso: string, n: number) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10) }
 
-function Stat({ label, value, hint, tone }: { label: string; value: number | null; hint?: string; tone?: 'warn' | 'danger' }) {
+function Stat({ label, full, value, hint, tone }: { label: string; full: string; value: number | null; hint?: string; tone?: 'warn' | 'danger' }) {
   const hot = tone && value !== null && value > 0
   return (
-    <div className="bg-surface px-5 py-4">
-      <p className="text-[13px] font-semibold text-muted">{label}</p>
+    <div className="min-w-0 bg-surface px-5 py-4 md:px-3.5 lg:px-5" title={full}>
+      <p className="truncate whitespace-nowrap text-[13px] font-semibold text-muted">{label}</p>
       {value === null
         ? <Skeleton className="mt-2 h-8 w-12" />
         : <p className={`mt-1.5 font-serif text-[2.4rem] font-normal leading-none tabular-nums tracking-[-0.02em] ${hot ? (tone === 'danger' ? 'text-danger' : 'text-warn') : 'text-ink'}`}>{value}</p>}
-      {hint && <p className="mt-0.5 text-xs text-faint">{hint}</p>}
+      {hint && <p className="mt-0.5 truncate whitespace-nowrap text-xs text-faint">{hint}</p>}
     </div>
   )
 }
@@ -134,11 +134,11 @@ export function AdminDashboardPage() {
       {error && <Alert tone="danger" className="mb-4">{error}</Alert>}
 
       <Card className="grid grid-cols-2 gap-px overflow-hidden bg-line md:grid-cols-5 [&>*:last-child]:col-span-2 md:[&>*:last-child]:col-span-1">
-        <Stat label="Issues today" value={loading ? null : todayCount} />
-        <Stat label="Issues, 7 days" value={loading ? null : week.length} />
-        <Stat label="Events with issues" value={loading ? null : events} hint="Last 7 days" />
-        <Stat label="Needs attention" value={loading ? null : attention.length} hint="Last 30 days" tone="warn" />
-        <Stat label="Serious" value={loading ? null : serious} hint="WhatsApp sent to POCs" tone="danger" />
+        <Stat label="Today" full="Issues reported today" value={loading ? null : todayCount} />
+        <Stat label="Last 7 days" full="Issues in the last 7 days" value={loading ? null : week.length} />
+        <Stat label="Events" full="Events with issues in the last 7 days" value={loading ? null : events} hint="With issues" />
+        <Stat label="Attention" full="Recordings that need attention, last 30 days" value={loading ? null : attention.length} hint="Last 30 days" tone="warn" />
+        <Stat label="Serious" full="Serious issues; WhatsApp sent to POCs" value={loading ? null : serious} hint="WhatsApp sent" tone="danger" />
       </Card>
 
       <div className="mt-4 grid items-start gap-4 md:grid-cols-2">

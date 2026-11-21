@@ -88,15 +88,38 @@ Deno.serve(async (req) => {
   const { data: me } = await admin.from('app_users')
     .select('id, role, roles, is_active').eq('id', caller.user.id).maybeSingle()
   if (!me || !me.is_active || !(me.roles ?? [me.role]).includes('admin')) {
-    return reply(origin, 403, { error: 'Only an admin can create users.' })
+    return reply(origin, 403, { error: 'Only an admin can manage users.' })
   }
 
   let rows: InRow[] = []
+  let deleteId = ''
   try {
     const body = await req.json()
     rows = Array.isArray(body?.rows) ? body.rows : []
+    deleteId = typeof body?.delete_user_id === 'string' ? body.delete_user_id : ''
   } catch {
     return reply(origin, 400, { error: 'Invalid request.' })
+  }
+
+  if (deleteId) {
+    if (deleteId === me.id) return reply(origin, 400, { error: 'You cannot delete your own account.' })
+    const { data: target } = await admin.from('app_users').select('id').eq('id', deleteId).maybeSingle()
+    if (!target) return reply(origin, 404, { error: 'This user no longer exists.' })
+
+    const { error: rowErr } = await admin.from('app_users').delete().eq('id', deleteId)
+    if (rowErr) {
+      if (rowErr.code === '23503') {
+        return reply(origin, 409, {
+          error: 'This user has history in the app (such as complaints), so they cannot be deleted. Deactivate them instead.',
+          reason: 'has_history',
+        })
+      }
+      console.error('delete app_user failed', rowErr)
+      return reply(origin, 500, { error: 'Could not delete the user.' })
+    }
+    const { error: authErr } = await admin.auth.admin.deleteUser(deleteId)
+    if (authErr) console.error('delete auth user failed', authErr)
+    return reply(origin, 200, { ok: true })
   }
   if (rows.length === 0) return reply(origin, 400, { error: 'No users to create.' })
   if (rows.length > MAX_ROWS_PER_REQUEST) {

@@ -8,7 +8,7 @@ import { ItemTag } from './ItemTag'
 import { Spinner } from './ui/Spinner'
 import { personName } from '../utils/personName'
 
-export const ISSUE_COLS = 'sm:grid sm:grid-cols-[8.5rem_6.5rem_8rem_minmax(0,1fr)_8.5rem_7.75rem_1.25rem] sm:items-center sm:gap-x-4'
+export const ISSUE_COLS = '@3xl:grid @3xl:grid-cols-[8.5rem_6.5rem_8rem_minmax(0,1fr)_8.5rem_7.75rem_1.25rem] @3xl:items-center @3xl:gap-x-4'
 
 function Highlighted({ text, part }: { text: string; part: string | null }) {
   const i = part ? text.indexOf(part) : -1
@@ -24,7 +24,7 @@ const fullStamp = (iso: string) => new Date(iso).toLocaleString('en-IN', { weekd
 function Reported({ issue }: { issue: FeedIssue }) {
   const otherDay = istDay(issue.created_at) !== issue.event_day
   return (
-    <span title={`Reported ${fullStamp(issue.created_at)}`} className="whitespace-nowrap tabular-nums sm:text-sm sm:text-muted">
+    <span title={`Reported ${fullStamp(issue.created_at)}`} className="whitespace-nowrap tabular-nums @3xl:text-sm @3xl:text-muted">
       {otherDay && <span className="font-semibold text-ink/80">{shortDay(issue.created_at)} · </span>}
       {time(issue.created_at)}
     </span>
@@ -66,27 +66,27 @@ export function IssueCard({ issue, focused = false }: { issue: FeedIssue; focuse
     <li ref={rowRef} className={`row-hover ${focused ? 'bg-accent-soft/70 ring-2 ring-inset ring-marigold/60' : open ? 'bg-subtle/80' : ''}`}>
       {issue.is_serious && <span aria-hidden="true" className="absolute inset-y-1 left-0 w-[3px] rounded-r bg-danger" />}
       <button type="button" onClick={() => void toggle()} aria-expanded={open}
-        className={`flex w-full flex-col gap-2 px-4 py-3 text-left sm:py-2.5 ${ISSUE_COLS}`}>
+        className={`flex w-full flex-col gap-2 px-4 py-3 text-left @3xl:py-2.5 ${ISSUE_COLS}`}>
 
-        <span className="flex flex-wrap items-center gap-1.5 sm:contents">
-          <span className="sm:min-w-0"><CategoryChip name={issue.category} className="max-w-full justify-center sm:w-full" /></span>
-          <span className={issue.is_serious ? '' : 'hidden sm:block'}><Priority serious={issue.is_serious} keywords={issue.serious_keywords} /></span>
+        <span className="flex flex-wrap items-center gap-1.5 @3xl:contents">
+          <span className="@3xl:min-w-0"><CategoryChip name={issue.category} className="max-w-full justify-center @3xl:w-full" /></span>
+          <span className={issue.is_serious ? '' : 'hidden @3xl:block'}><Priority serious={issue.is_serious} keywords={issue.serious_keywords} /></span>
           <span className="min-w-0">
-            {issue.item ? <ItemTag item={issue.item} category={issue.category} /> : <span className="hidden pl-3 text-ink/40 sm:inline">—</span>}
+            {issue.item ? <ItemTag item={issue.item} category={issue.category} /> : <span className="hidden pl-3 text-ink/40 @3xl:inline">—</span>}
           </span>
         </span>
         <span className="row-text min-w-0 text-sm leading-6 text-ink">
           {issue.summary ?? issue.description}
         </span>
-        <span className="flex items-center gap-2 text-xs text-muted sm:contents">
-          <span className="truncate font-medium text-ink/80 sm:text-sm">{personName(issue.recorded_by) || 'Unknown'}</span>
+        <span className="flex items-center gap-2 text-xs text-muted @3xl:contents">
+          <span className="truncate font-medium text-ink/80 @3xl:text-sm">{personName(issue.recorded_by) || 'Unknown'}</span>
           <Reported issue={issue} />
-          <Icon name="chevron" className={`row-chevron ml-auto size-4 text-ink/60 sm:ml-0 ${open ? 'rotate-180' : ''}`} />
+          <Icon name="chevron" className={`row-chevron ml-auto size-4 text-ink/60 @3xl:ml-0 ${open ? 'rotate-180' : ''}`} />
         </span>
       </button>
 
       {open && (
-        <div className="fade-in space-y-3 px-4 pb-4 sm:pl-[calc(8.5rem+6.5rem+2rem+1rem)]">
+        <div className="fade-in space-y-3 px-4 pb-4 @3xl:pl-[calc(8.5rem+6.5rem+2rem+1rem)]">
           {issue.is_serious && issue.serious_keywords?.length ? (
             <p className="text-xs font-semibold text-danger">Serious: matched &ldquo;{issue.serious_keywords.join('”, “')}&rdquo;. POCs were alerted on WhatsApp.</p>
           ) : null}

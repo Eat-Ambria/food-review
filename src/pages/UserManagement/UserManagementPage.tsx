@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
-import { listUsers, resetPin, unlockUser } from '../../services/userAdminService'
+import { deleteUser, listUsers, resetPin, unlockUser, updateUser } from '../../services/userAdminService'
 import { Button, buttonClass } from '../../components/ui/Button'
 import { Alert, Card, EmptyState, ListSkeleton, PageHeader } from '../../components/ui/Layout'
 import { Toast, useToast } from '../../components/ui/Toast'
@@ -62,6 +62,9 @@ function StatusBadges({ u }: { u: ManagedUser }) {
   )
 }
 
+const CONFIRM_TITLE = { reset: 'Reset PIN?', unlock: 'Unlock user?', delete: 'Delete user?', deactivate: 'Cannot delete this user' } as const
+const CONFIRM_BUTTON = { reset: 'Reset to 0000', unlock: 'Unlock', delete: 'Delete', deactivate: 'Deactivate' } as const
+
 export function UserManagementPage() {
   const { user: me } = useAuth()
   const [users, setUsers] = useState<ManagedUser[]>([])
@@ -72,7 +75,7 @@ export function UserManagementPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [editing, setEditing] = useState<ManagedUser | null>(null)
   const [formOpen, setFormOpen] = useState(false)
-  const [confirm, setConfirm] = useState<{ kind: 'reset' | 'unlock'; user: ManagedUser } | null>(null)
+  const [confirm, setConfirm] = useState<{ kind: 'reset' | 'unlock' | 'delete' | 'deactivate'; user: ManagedUser } | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
   const [toast, showToast, hideToast] = useToast()
 
@@ -108,7 +111,20 @@ export function UserManagementPage() {
     if (!confirm) return
     setActionBusy(true)
     try {
-      if (confirm.kind === 'reset') {
+      if (confirm.kind === 'delete') {
+        const res = await deleteUser(confirm.user.id)
+        if (!res.ok) {
+          if (res.hasHistory && confirm.user.is_active) { setConfirm({ kind: 'deactivate', user: confirm.user }); setActionBusy(false); return }
+          throw new Error(res.error)
+        }
+        showToast(`${personName(confirm.user.name)} is deleted.`)
+      } else if (confirm.kind === 'deactivate') {
+        const u = confirm.user
+        const res = await updateUser({ id: u.id, name: u.name, username: u.username, roles: u.roles,
+          mobile_number: u.mobile_number, email: u.email, is_active: false })
+        if (!res.ok) throw new Error(res.error ?? 'Could not deactivate the user.')
+        showToast(`${personName(u.name)} is deactivated and can no longer sign in.`)
+      } else if (confirm.kind === 'reset') {
         await resetPin(confirm.user.id)
         showToast(`PIN reset for ${personName(confirm.user.name)}. They sign in with 0000 and must change it.`)
       } else {
@@ -134,12 +150,18 @@ export function UserManagementPage() {
   }
 
   const actions = (u: ManagedUser) => (
-    <div className="flex flex-wrap justify-end gap-0.5">
+    <div className="flex shrink-0 justify-end gap-0.5">
       <Button variant="ghost" size="sm" onClick={() => openEdit(u)}><Icon name="pencil" />Edit</Button>
       <Button variant="ghost" size="sm" onClick={() => setConfirm({ kind: 'reset', user: u })}><Icon name="key" />Reset PIN</Button>
       {u.locked_until && (
         <Button variant="ghost" size="sm" className="text-danger hover:bg-danger-soft hover:text-danger" onClick={() => setConfirm({ kind: 'unlock', user: u })}>
           <Icon name="unlock" />Unlock
+        </Button>
+      )}
+      {u.id !== me?.id && (
+        <Button variant="ghost" size="sm" aria-label={`Delete ${personName(u.name)}`} title="Delete user"
+          className="hover:bg-danger-soft! hover:text-danger!" onClick={() => setConfirm({ kind: 'delete', user: u })}>
+          <Icon name="trash" /><span className="max-xl:hidden">Delete</span>
         </Button>
       )}
     </div>
@@ -199,7 +221,7 @@ export function UserManagementPage() {
         ) : (
           <>
 
-            <Card className="hidden overflow-hidden md:block">
+            <Card className="hidden overflow-hidden xl:block">
               <table className="w-full text-sm">
                 <thead className="border-b border-line bg-subtle text-left text-xs text-muted">
                   <tr>
@@ -232,20 +254,17 @@ export function UserManagementPage() {
               </table>
             </Card>
 
-            <div className="space-y-3 md:hidden">
+            <div className="@container xl:hidden"><div className="grid gap-3 @3xl:grid-cols-2">
               {filtered.map((u) => (
                 <Card key={u.id} className={`overflow-hidden ${u.is_active ? '' : 'opacity-75'}`}>
                   <div className="flex items-start gap-3 p-4 pb-3">
                     <Avatar u={u} size="lg" />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-[15px] font-bold">{personName(u.name)}{u.id === me?.id && <span className="ml-1.5 text-xs font-medium text-muted">(you)</span>}</p>
-                          <p className="truncate text-xs text-muted">@{u.username}</p>
-                        </div>
-                        <StatusBadges u={u} />
+                      <div className="flex items-baseline gap-2">
+                        <p className="min-w-0 truncate text-[15px] font-bold">{personName(u.name)}{u.id === me?.id && <span className="ml-1.5 text-xs font-medium text-muted">(you)</span>}</p>
+                        <p className="shrink-0 truncate text-xs text-muted">@{u.username}</p>
                       </div>
-                      <div className="mt-2.5"><RoleChips u={u} /></div>
+                      <div className="mt-2 flex flex-wrap items-center gap-1 [&>div]:contents"><RoleChips u={u} /><StatusBadges u={u} /></div>
                     </div>
                   </div>
                   <div className="flex items-center justify-between gap-2 border-t border-line bg-subtle/60 py-1.5 pl-4 pr-2">
@@ -256,7 +275,7 @@ export function UserManagementPage() {
                   </div>
                 </Card>
               ))}
-            </div>
+            </div></div>
           </>
         )}
       </div>
@@ -264,15 +283,19 @@ export function UserManagementPage() {
       <UserFormModal open={formOpen} user={editing} existingUsernames={usernames} onClose={closeForm}
         onSaved={(msg) => { setFormOpen(false); showToast(msg); void load() }} />
 
-      <Modal open={Boolean(confirm)} title={confirm?.kind === 'reset' ? 'Reset PIN?' : 'Unlock user?'} onClose={() => setConfirm(null)}
+      <Modal open={Boolean(confirm)} title={CONFIRM_TITLE[confirm?.kind ?? 'reset']} onClose={() => setConfirm(null)}
         footer={<>
           <Button variant="secondary" onClick={() => setConfirm(null)}>Cancel</Button>
-          <Button loading={actionBusy} onClick={() => void runConfirm()}>
-            {confirm?.kind === 'reset' ? 'Reset to 0000' : 'Unlock'}
+          <Button loading={actionBusy} variant={confirm?.kind === 'delete' || confirm?.kind === 'deactivate' ? 'danger' : 'primary'} onClick={() => void runConfirm()}>
+            {CONFIRM_BUTTON[confirm?.kind ?? 'reset']}
           </Button>
         </>}>
         <p className="text-sm leading-relaxed text-muted">
-          {confirm?.kind === 'reset'
+          {confirm?.kind === 'delete'
+            ? <><b className="text-ink">{personName(confirm.user.name)}</b> ({confirm.user.username}) will be removed and can no longer sign in. This cannot be undone.</>
+            : confirm?.kind === 'deactivate'
+            ? <><b className="text-ink">{personName(confirm.user.name)}</b> has history in the app, such as recorded complaints, so they cannot be deleted without losing it. Deactivate them instead: they can no longer sign in, and their history stays in the reports.</>
+            : confirm?.kind === 'reset'
             ? <><b className="text-ink">{personName(confirm.user.name)}</b>&rsquo;s PIN will become <b className="text-ink">0000</b>. They must set a new PIN at their next sign-in. Any lock is also cleared.</>
             : <><b className="text-ink">{personName(confirm?.user.name)}</b> will be able to try signing in again right away.</>}
         </p>

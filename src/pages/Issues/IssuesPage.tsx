@@ -344,7 +344,7 @@ export function IssuesPage() {
                                 <span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-ink/[0.06] px-2 text-sm font-semibold tabular-nums">{e.issues.length}</span>
                               </div>
 
-                              <div className="pb-1">
+                              <div className="@container pb-1">
                                 <IssueTableHead />
                                 <ul className="divide-y divide-line">
                                   {sortByItem(e.issues, (i) => i.item).map((i) => <IssueCard key={i.issue_id} issue={i} focused={i.submission_id === focusId} />)}

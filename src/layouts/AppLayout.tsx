@@ -46,11 +46,14 @@ function Mark({ className = 'size-5' }: { className?: string }) {
 
 function Brand() {
   return (
-    <div className="flex items-start gap-2.5 px-8 pb-7 pt-8">
-      <Mark className="mt-0.5 size-11 shrink-0 drop-shadow-[0_6px_14px_rgb(224_162_37/0.25)]" />
+    <div className="brand group flex items-start gap-2.5 px-8 pb-7 pt-8">
+      <span className="brand-mark relative mt-0.5 block size-11 shrink-0 overflow-hidden rounded-[24%]">
+        <Mark className="size-11" />
+        <span aria-hidden="true" className="brand-shine" />
+      </span>
       <div className="leading-none">
-        <p className="font-serif text-[2rem] tracking-[-0.01em] text-white">Ambria</p>
-        <p className="mt-1.5 pl-0.5 text-[13px] tracking-wide text-white/70">food review</p>
+        <p className="brand-word font-serif text-[2rem] tracking-[-0.01em] text-white">Ambria</p>
+        <p className="brand-sub mt-1.5 pl-0.5 text-[13px] tracking-wide text-white/70">food review</p>
       </div>
     </div>
   )
@@ -81,7 +84,7 @@ function TopSearch({ canSeeIssues }: { canSeeIssues: boolean }) {
   }, [])
 
   return (
-    <form role="search" className="group relative w-full max-w-sm"
+    <form role="search" className="group relative min-w-0 flex-1 max-w-sm"
       onSubmit={(e) => { e.preventDefault(); const t = q.trim(); if (t) { navigate(`${target}?q=${encodeURIComponent(t)}`); ref.current?.blur() } }}>
       <Icon name="search" className="pointer-events-none absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-ink/70" />
       <input ref={ref} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search"
@@ -207,7 +210,7 @@ export function AppLayout() {
         </header>
 
         <div className="sticky top-0 z-30 hidden h-[4.5rem] items-center justify-end border-b border-black/[0.04] bg-[#f6f5f2]/80 px-8 shadow-[0_8px_24px_-20px_rgb(23_32_51/0.35)] backdrop-blur-md md:flex lg:px-10">
-          {barTitle && <h1 className="mr-auto truncate pr-6 font-serif text-[2.1rem] font-medium leading-none tracking-[-0.02em] text-ink">{barTitle}</h1>}
+          {barTitle && <h1 className="mr-auto shrink-0 whitespace-nowrap pr-4 font-serif text-[1.75rem] font-medium lg:pr-6 lg:text-[2.1rem] leading-none tracking-[-0.02em] text-ink">{barTitle}</h1>}
           <TopSearch canSeeIssues={work.some((w) => w.to === '/issues')} />
           {isPoc && (
             <>
