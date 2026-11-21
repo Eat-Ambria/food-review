@@ -136,8 +136,8 @@ export function VenuesPage() {
               <Card as="li" key={v.id} className={`flex flex-col p-5 ${v.is_active ? '' : 'bg-subtle'}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className={`truncate text-base font-bold ${v.is_active ? '' : 'text-muted'}`}>{v.venue_name}</p>
-                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    <p className={`truncate font-serif text-[1.7rem] font-medium leading-tight tracking-[-0.015em] ${v.is_active ? 'text-ink' : 'text-muted'}`}>{v.venue_name}</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
                       {v.calendar_venue_id
                         ? <Badge tone="ok" dot>Calendar: {v.calendar_venue_id}</Badge>
                         : <Badge tone="warn" dot>Not linked to Calendar</Badge>}
@@ -149,11 +149,11 @@ export function VenuesPage() {
                   </Button>
                 </div>
 
-                <p className="mt-5 text-xs font-semibold text-muted">Names people use</p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                <p className="mt-5 text-[13px] font-semibold text-ink/70">Names people use</p>
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
                   {v.aliases.length === 0 && <span className="text-sm text-faint">None yet</span>}
                   {v.aliases.map((a) => (
-                    <span key={a.id} className="inline-flex items-center gap-0.5 rounded-full bg-ink/[0.05] py-1 pl-3 pr-1 text-[13px] font-medium">
+                    <span key={a.id} className="inline-flex items-center gap-0.5 rounded-full bg-ink/[0.05] py-1 pl-3 pr-1 text-[13.5px] font-medium text-ink/90">
                       {a.alias}
                       <button type="button" onClick={() => void removeAlias(a.id).then(load).catch((e) => showToast((e as Error).message, 'error'))}
                         aria-label={`Remove ${a.alias}`} className="rounded-full p-0.5 text-faint transition-colors hover:bg-ink/10 hover:text-ink">
@@ -168,8 +168,12 @@ export function VenuesPage() {
 
                 {v.sub_venues.length > 0 && (
                   <div className="mt-5 border-t border-line pt-4">
-                    <p className="text-xs font-semibold text-muted">Lawns and halls (from Calendar)</p>
-                    <p className="mt-1 text-sm leading-relaxed text-ink/80">{v.sub_venues.join(', ')}</p>
+                    <p className="text-[13px] font-semibold text-ink/70">Lawns and halls <span className="font-normal text-faint">from Calendar</span></p>
+                    <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 text-[13.5px] text-ink/80">
+                      {v.sub_venues.map((s, i) => (
+                        <li key={`${i}-${s}`} className="flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden="true" className="size-1.5 rounded-full bg-marigold/70" />{s}</li>
+                      ))}
+                    </ul>
                   </div>
                 )}
               </Card>
