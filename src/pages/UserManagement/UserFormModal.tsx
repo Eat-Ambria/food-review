@@ -91,8 +91,8 @@ export function UserFormModal({ open, user, existingUsernames, onClose, onSaved 
       <form id="user-form" onSubmit={submit} className="space-y-5" noValidate>
         <TextField label="Full name" value={name} onChange={(e) => onNameChange(e.target.value)} autoFocus maxLength={120} />
         <TextField label="Username" value={username} autoCapitalize="none" spellCheck={false} maxLength={64}
-          onChange={(e) => { setUsername(e.target.value.toLowerCase()); setUsernameTouched(true) }}
-          hint="Used to sign in. Lowercase letters, numbers and dots." />
+          onChange={(e) => { setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '')); setUsernameTouched(true) }}
+          hint="Used to sign in. Small letters and numbers only, no dots or spaces." />
         <fieldset>
           <legend className="mb-1.5 block text-sm font-semibold">Roles <span className="font-normal text-muted">(one or more)</span></legend>
           <div className="space-y-2">

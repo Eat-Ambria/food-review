@@ -109,9 +109,9 @@ export function VenuesPage() {
           <Button onClick={() => void openImport()}><Icon name="download" />Import from Calendar</Button>
         </>} />
 
-      <Alert tone="info" icon="sparkles">
-        Also add Hindi spellings (e.g. <b>पुष्पांजलि</b>, <b>मानकटाला</b>). Transcripts often write Hindi-sounding names in Hindi script.
-      </Alert>
+      <p className="text-sm text-muted">
+        Add the Hindi name too, like <b className="font-semibold text-ink">पुष्पांजलि</b> or <b className="font-semibold text-ink">मानकटाला</b>, so venues are found when staff say them in Hindi.
+      </p>
 
       {error && <Alert tone="danger" className="mt-4" action={<Button size="sm" variant="secondary" onClick={() => void load()}>Retry</Button>}>{error}</Alert>}
 

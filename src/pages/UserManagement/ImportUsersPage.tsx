@@ -310,7 +310,7 @@ export function ImportUsersPage() {
                     {(r.mobile_number || r.email) && <p className="truncate text-xs text-muted">{[r.mobile_number, r.email].filter(Boolean).join(' · ')}</p>}
                   </div>
                   <input aria-label="Username" value={r.username} spellCheck={false} autoCapitalize="none" aria-invalid={r.state === 'error'}
-                    onChange={(e) => edit(r.index, { username: e.target.value.toLowerCase().trim(), usernameWasGenerated: false })}
+                    onChange={(e) => edit(r.index, { username: e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''), usernameWasGenerated: false })}
                     className={inputClass('md', 'h-9 text-[13px]')} />
                   <select aria-label="Role" value={r.role} onChange={(e) => edit(r.index, { role: e.target.value as Role })}
                     className={inputClass('md', 'h-9 cursor-pointer')}>

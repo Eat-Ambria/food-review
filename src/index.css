@@ -188,3 +188,27 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: p
   .lift, .lift:hover { transition: none; transform: none; }
   .rec-pulse { opacity: 0; }
 }
+
+.ripple-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+}
+.ripple-wave {
+  position: absolute;
+  border-radius: 9999px;
+  background: currentColor;
+  opacity: 0.16;
+  transform: scale(0);
+  animation: ripple-grow 220ms cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
+}
+.ripple-wave.ripple-out {
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+}
+@keyframes ripple-grow {
+  to { transform: scale(1); }
+}

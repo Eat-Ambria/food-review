@@ -75,6 +75,26 @@ function group(rows: FeedIssue[]): DayGroup[] {
   })
 }
 
+type ItemCount = { key: string; item: string; category: string | null; count: number }
+
+function ItemsLine({ items }: { items: ItemCount[] }) {
+  const [all, setAll] = useState(false)
+  if (!items.length) return <span className="min-w-0 flex-1 text-sm text-faint">—</span>
+  const more = all ? 0 : items.length - 2
+  return (
+    <div className={`flex min-w-0 flex-1 items-center gap-1 sm:flex-wrap ${all ? 'flex-wrap' : 'overflow-hidden'}`}>
+      {items.map((x, i) => (
+        <ItemTag key={x.key} item={x.item} category={x.category} count={x.count} showOne size="sm"
+          className={all ? '' : i < 2 ? 'min-w-0' : 'max-sm:hidden!'} />
+      ))}
+      {more > 0 && (
+        <button type="button" onClick={() => setAll(true)}
+          className="shrink-0 rounded-full bg-ink/[0.06] px-2 py-0.5 text-xs font-semibold text-ink/70 hover:bg-ink/10 sm:hidden">+{more}</button>
+      )}
+    </div>
+  )
+}
+
 export function IssuesPage() {
   const [range, setRange] = useState<Range>('today')
   const [from, setFrom] = useState(istToday())
@@ -318,13 +338,9 @@ export function IssuesPage() {
                                 )}
                               </div>
 
-                              <div className="flex items-center gap-2 border-t border-line/70 px-4 py-3">
+                              <div className="flex items-center gap-2 border-t border-line/70 px-4 py-2.5">
                                 <span className="text-sm text-ink/80">Items:</span>
-                                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-                                  {items.length > 0
-                                    ? items.map((x) => <ItemTag key={x.key} item={x.item} category={x.category} count={x.count} showOne />)
-                                    : <span className="text-sm text-faint">—</span>}
-                                </div>
+                                <ItemsLine items={items} />
                                 <span className="flex h-7 min-w-7 shrink-0 items-center justify-center rounded-full bg-ink/[0.06] px-2 text-sm font-semibold tabular-nums">{e.issues.length}</span>
                               </div>
 

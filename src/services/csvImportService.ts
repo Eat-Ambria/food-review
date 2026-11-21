@@ -96,7 +96,7 @@ export function usernameFromName(name: string): string {
     .trim()
     .split(/\s+/)
     .filter(Boolean)
-    .join('.')
+    .join('')
     .slice(0, 60)
     .replace(/\.+$/, '')
 }

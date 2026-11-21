@@ -58,6 +58,9 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   })
 
+  const { data: resolved } = await admin.rpc('resolve_username', { p_username: username })
+  if (typeof resolved === 'string' && resolved) username = resolved
+
   const { data: check, error: checkErr } = await admin.rpc('auth_check_pin', {
     p_username: username, p_pin: pin, p_ip: ip,
   })

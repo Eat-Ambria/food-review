@@ -15,11 +15,11 @@ const parsed = (rows: ParseResult['rows']): ParseResult => ({ rows, lineNumbers:
 
 describe('usernameFromName', () => {
   it.each([
-    ['Rahul Sharma', 'rahul.sharma'],
-    ['  Rahul   Sharma ', 'rahul.sharma'],
-    ['Dr. R.K. Singh', 'dr.r.k.singh'],
-    ['José Álvarez', 'jose.alvarez'],
-    ["O'Brien-Smith", 'o.brien.smith'],
+    ['Rahul Sharma', 'rahulsharma'],
+    ['  Rahul   Sharma ', 'rahulsharma'],
+    ['Dr. R.K. Singh', 'drrksingh'],
+    ['José Álvarez', 'josealvarez'],
+    ["O'Brien-Smith", 'obriensmith'],
     ['राहुल', ''],
   ])('%s -> %s', (name, expected) => {
     expect(usernameFromName(name)).toBe(expected)
@@ -109,9 +109,9 @@ describe('departments / status filter', () => {
 
 describe('buildPreview', () => {
   it('generates unique usernames against the DB and within the file', () => {
-    const existing = { usernames: new Set(['rahul.sharma']), namesToUsernames: new Map<string, string[]>() }
+    const existing = { usernames: new Set(['rahulsharma']), namesToUsernames: new Map<string, string[]>() }
     const rows = buildPreview(parsed([{ name: 'Rahul Sharma' }, { name: 'Rahul  sharma' }]), existing, 'recorder')
-    expect(rows.map((r) => r.username)).toEqual(['rahul.sharma2', 'rahul.sharma3'])
+    expect(rows.map((r) => r.username)).toEqual(['rahulsharma2', 'rahulsharma3'])
     expect(rows.every((r) => r.usernameWasGenerated)).toBe(true)
 
     expect(rows.map((r) => r.state)).toEqual(['warning', 'warning'])
@@ -134,7 +134,7 @@ describe('buildPreview', () => {
   })
 
   it('unticks a name that already exists in the DB', () => {
-    const existing = { usernames: new Set<string>(), namesToUsernames: new Map([['rahul sharma', ['rahul.sharma']]]) }
+    const existing = { usernames: new Set<string>(), namesToUsernames: new Map([['rahul sharma', ['rahulsharma']]]) }
     const [r] = buildPreview(parsed([{ name: 'Rahul Sharma' }]), existing, 'recorder')
     expect(r.include).toBe(false)
     expect(r.state).toBe('warning')
