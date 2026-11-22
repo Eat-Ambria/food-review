@@ -69,6 +69,8 @@ Rules:
 - Problems at DIFFERENT venues are always separate entries, even for the same dish.
 - Never invent or assume details that are not in the transcript. If something (like location) is not said, use null.
 - "category" MUST be exactly one of the category names provided. Use "Other" if none fits.
+- Anything about a DRINK (tea, coffee, mocktail, juice, water, soft drink, ice, bar), including its taste, smell,
+  temperature, quality or something found in it, goes to "Beverage", never "Kitchen". "Kitchen" is only for food.
 - "description": one short, factual English sentence describing the problem.
 - "item": the MAIN thing the problem is about: the dish, drink, object, service or area. This is the most
   important field, so fill it whenever anything is named.
@@ -83,11 +85,15 @@ Rules:
 - "venue_mentioned": the venue name exactly as said for THIS problem (e.g. "Pushpanjali", "AM", "Manaktala"), else null.
 - "location": the specific place mentioned (e.g. "Banquet Hall", "Washroom", "Amber Lawn"), else null.
 - "original_text": the exact words from the transcript that describe this issue (copy, do not translate).
+- "food_safety": true ONLY when the problem is about food or drink being unsafe or unfit to eat: something found in it
+  (hair, insect, glass, stone, plastic), stale, spoiled, smelly or undercooked food, fungus, or people falling ill
+  (vomiting, food poisoning, allergy). false for everything else, including venue or hall names that contain such words
+  ("Glass House" is a venue, not glass in food), broken glassware or decor, washroom or room smells, AC, service and delays.
 - "summary": concise professional English for the person who must fix it, naming the item. Maximum two lines (about 30 words). Keep important venue, location, department and event context that was said. No assumptions.
 - Text like [guest] or [phone] is a placeholder for removed private data; keep it as is if needed.
 - If the transcript contains no operational issue at all, return an empty "issues" list.
 Return valid JSON only, in exactly this shape:
-{"issues":[{"category":"<one of the names>","item":"..." or null,"venue_mentioned":"..." or null,"description":"...","location":"..." or null,"original_text":"...","summary":"..."}]}`
+{"issues":[{"category":"<one of the names>","item":"..." or null,"venue_mentioned":"..." or null,"description":"...","location":"..." or null,"original_text":"...","food_safety":true or false,"summary":"..."}]}`
 
 function issueSchema(categoryNames: string[]) {
   return {
@@ -105,9 +111,10 @@ function issueSchema(categoryNames: string[]) {
             description: { type: 'string' },
             location: { type: ['string', 'null'] },
             original_text: { type: 'string' },
+            food_safety: { type: 'boolean' },
             summary: { type: 'string' },
           },
-          required: ['category', 'item', 'venue_mentioned', 'description', 'location', 'original_text', 'summary'],
+          required: ['category', 'item', 'venue_mentioned', 'description', 'location', 'original_text', 'food_safety', 'summary'],
         },
       },
     },
@@ -117,7 +124,7 @@ function issueSchema(categoryNames: string[]) {
 
 interface ExtractedIssue {
   category: string; item: string | null; venue_mentioned: string | null
-  description: string; location: string | null; original_text: string; summary: string
+  description: string; location: string | null; original_text: string; summary: string; food_safety: boolean
 }
 
 class AiError extends Error { retryable: boolean; constructor(m: string, r: boolean) { super(m); this.retryable = r } }
@@ -236,6 +243,7 @@ function validateIssues(text: string, categoryNames: string[]): ExtractedIssue[]
       location: str(r.location) || null,
       original_text: str(r.original_text).slice(0, 1000),
       summary,
+      food_safety: r.food_safety !== false,
     }
   })
 }
@@ -284,13 +292,12 @@ function inBackground(p: Promise<unknown>) {
   if (rt?.waitUntil) rt.waitUntil(safe)
 }
 
-async function notifyAfterSave(db: Db, submissionId: string, transcript: string, issues: ExtractedIssue[]) {
+async function notifyAfterSave(db: Db, submissionId: string, issues: ExtractedIssue[]) {
 
   let seriousKeywords: string[] = []
   try {
-    seriousKeywords = await findSeriousKeywords(db, [
-      transcript, ...issues.flatMap((it) => [it.item, it.description, it.summary]),
-    ])
+    seriousKeywords = await findSeriousKeywords(db, issues.filter((it) => it.food_safety)
+      .flatMap((it) => [it.item, it.description, it.summary, it.original_text]))
     if (seriousKeywords.length) {
       await db.from('submissions').update({ is_serious: true, serious_keywords: seriousKeywords }).eq('id', submissionId)
     }
@@ -439,7 +446,7 @@ async function processSubmission(db: Db, submissionId: string, actorId: string |
     }).eq('id', submissionId)
     if (upErr) throw new Error(`Saving submission failed: ${upErr.message}`)
 
-    await notifyAfterSave(db, submissionId, claimed.reviewed_transcript, issues)
+    await notifyAfterSave(db, submissionId, issues)
 
     return { claimed: true, status, issues, event: match }
   } catch (e) {
@@ -524,9 +531,17 @@ async function sendPendingPushes(db: Db, limit = 100) {
 const padNorm = (t: string) => ' ' + t.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ').trim() + ' '
 
 async function findSeriousKeywords(db: Db, texts: (string | null | undefined)[]): Promise<string[]> {
-  const { data } = await db.from('alert_keywords').select('keyword, keyword_normalized')
+  if (!texts.some(Boolean)) return []
+  const [{ data }, { data: venues }] = await Promise.all([
+    db.from('alert_keywords').select('keyword, keyword_normalized'),
+    db.from('venues').select('venue_name, sub_venues, aliases:venue_aliases(alias)'),
+  ])
   if (!data?.length) return []
-  const hay = padNorm(texts.filter(Boolean).join(' \n '))
+  const places = (venues ?? []).flatMap((v) => [v.venue_name as string, ...((v.sub_venues as string[] | null) ?? []),
+    ...((v.aliases as { alias: string }[] | null) ?? []).map((a) => a.alias)])
+    .map((p) => padNorm(p ?? '').trim()).filter((p) => p.includes(' ')).sort((a, b) => b.length - a.length)
+  let hay = padNorm(texts.filter(Boolean).join(' \n '))
+  for (const p of places) hay = hay.split(' ' + p + ' ').join(' ')
   return data.filter((k) => {
     const kw = padNorm(k.keyword_normalized as string).trim()
     return kw && hay.includes(' ' + kw + ' ')

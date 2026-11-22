@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useOutbox } from '../hooks/useOutbox'
 import { Icon, type IconName } from '../components/Icon'
 import { rolesOf, type Role } from '../types/auth'
 import { NotificationBell } from '../components/NotificationBell'
@@ -141,6 +142,7 @@ const SIDEBAR_BG = 'bg-[linear-gradient(180deg,#1a2335_0%,#141c2c_100%)]'
 
 export function AppLayout() {
   const { user } = useAuth()
+  useOutbox(user?.id)
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [barTitle, setBarTitle] = useState<string | null>(null)

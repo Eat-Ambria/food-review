@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { listUsers } from '../../services/userAdminService'
+import { listVenues } from '../../services/venueService'
+import { matchKeywords, placeNames, placesContaining } from '../../utils/seriousMatch'
 import type { ManagedUser } from '../../types/users'
 import { rolesOf } from '../../types/auth'
 import { Button } from '../../components/ui/Button'
@@ -24,6 +26,8 @@ export function AlertsPage() {
   const [keywords, setKeywords] = useState<Keyword[]>([])
   const [pocs, setPocs] = useState<ManagedUser[]>([])
   const [newKw, setNewKw] = useState('')
+  const [places, setPlaces] = useState<string[]>([])
+  const [sample, setSample] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -31,6 +35,7 @@ export function AlertsPage() {
     if (e) setError('Could not load keywords. ' + e.message)
     else setKeywords((data ?? []) as Keyword[])
     try { setPocs((await listUsers()).filter((u) => u.is_active && rolesOf(u).includes('poc'))) } catch { }
+    try { setPlaces(placeNames(await listVenues(true))) } catch { }
   }, [])
   useEffect(() => { void load() }, [load])
 
@@ -50,13 +55,17 @@ export function AlertsPage() {
   const onSubmit = (e: FormEvent) => { e.preventDefault(); void add(newKw) }
 
   const have = new Set(keywords.map((k) => k.keyword.toLowerCase()))
+  const clashes = keywords.map((k) => ({ k, in: placesContaining(k.keyword, places) })).filter((c) => c.in.length > 0)
+  const clashOf = new Map(clashes.map((c) => [c.k.id, c.in]))
+  const newClash = placesContaining(newKw, places)
+  const found = sample.trim() ? matchKeywords(keywords.map((k) => k.keyword), [sample], places) : []
   const withNumber = pocs.filter((p) => usableNumber(p.mobile_number))
   const withoutNumber = pocs.filter((p) => !usableNumber(p.mobile_number))
 
   return (
     <div className="mx-auto max-w-4xl">
       <PageHeader title="Serious alerts"
-        description={<>If a complaint contains any of these words, it is marked <b className="font-semibold text-danger">Serious</b> and every POC gets a WhatsApp message straight away.</>} />
+        description={<>If a complaint about food or drink being unsafe (something in it, stale, spoiled, people falling ill) contains any of these words, it is marked <b className="font-semibold text-danger">Serious</b> and every POC gets a WhatsApp message straight away. Venue, lawn and hall names are ignored, so &ldquo;Glass House&rdquo; does not count as &ldquo;glass&rdquo;.</>} />
 
       {error && <Alert tone="danger" className="mb-4">{error}</Alert>}
 
@@ -68,7 +77,9 @@ export function AlertsPage() {
           <div className="mt-4 flex flex-wrap gap-1.5">
             {keywords.length === 0 && <p className="text-sm text-muted">No keywords yet, so nothing is treated as serious.</p>}
             {keywords.map((k) => (
-              <span key={k.id} className="inline-flex items-center gap-0.5 rounded-full bg-danger-soft py-1 pl-3 pr-1 text-[13px] font-semibold text-danger">
+              <span key={k.id} title={clashOf.has(k.id) ? `Also part of: ${clashOf.get(k.id)!.join(', ')}` : undefined}
+                className={`inline-flex items-center gap-0.5 rounded-full py-1 pl-3 pr-1 text-[13px] font-semibold ${clashOf.has(k.id) ? 'bg-warn-soft text-warn' : 'bg-danger-soft text-danger'}`}>
+                {clashOf.has(k.id) && <Icon name="alert" className="mr-1 size-3.5" />}
                 {k.keyword}
                 <button type="button" onClick={() => void remove(k.id)} aria-label={`Remove ${k.keyword}`} className="rounded-full p-0.5 transition-colors hover:bg-danger/15">
                   <Icon name="x" className="size-3.5" />
@@ -81,6 +92,15 @@ export function AlertsPage() {
               className={inputClass('md', 'flex-1')} />
             <Button type="submit" disabled={newKw.trim().length < 2}><Icon name="plus" />Add</Button>
           </form>
+          {newClash.length > 0 && (
+            <p className="mt-2 text-xs text-warn">&ldquo;{newKw.trim()}&rdquo; is also part of {newClash.join(', ')}. Mentions of the venue are ignored, so only real food problems will count.</p>
+          )}
+          {clashes.length > 0 && (
+            <Alert tone="warn" className="mt-4">
+              {clashes.map((c) => <span key={c.k.id} className="block"><b>{c.k.keyword}</b> is also part of {c.in.join(', ')}.</span>)}
+              <span className="mt-1 block text-xs">The venue name itself never makes a complaint serious. If the venue has a short name that is the same word, remove that keyword or rename the alias.</span>
+            </Alert>
+          )}
           {SUGGESTIONS.some((s) => !have.has(s.toLowerCase())) && (
             <div className="mt-5 border-t border-line pt-4">
               <p className="text-xs font-semibold text-muted">Suggestions (tap to add)</p>
@@ -93,6 +113,19 @@ export function AlertsPage() {
                 ))}
               </div>
             </div>
+          )}
+        </Card>
+
+        <Card as="section" className="p-5 md:p-6">
+          <SectionHeader title="Test a sentence" description="Type what staff might say to see which keywords it would catch. The AI also checks that it is really about food, so a match here is not always an alert." />
+          <textarea value={sample} onChange={(e) => setSample(e.target.value)} rows={2} maxLength={500} aria-label="Sentence to test"
+            placeholder="e.g. Glass House mein dal mein kaanch mila" className={inputClass('md', 'mt-4 h-auto! w-full resize-none py-2.5')} />
+          {sample.trim() && (
+            <p className="mt-2 text-sm">
+              {found.length
+                ? <>Would catch: {found.map((k) => <b key={k} className="mr-1.5 text-danger">{k}</b>)}</>
+                : <span className="text-muted">No keyword caught.</span>}
+            </p>
           )}
         </Card>
 

@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { fetchMySubmissions, listCategories, type MySubmission } from '../../services/issueService'
 import { listVenues } from '../../services/venueService'
+import { listOutbox, onOutboxNotice, type OutboxItem } from '../../services/outbox'
 import type { Venue } from '../../types/events'
 import { Badge } from '../../components/ui/Badge'
 import { FilterSelect, SearchInput, inputClass } from '../../components/ui/Field'
@@ -77,6 +78,19 @@ export function MySubmissionsPage() {
   }, [user, from, to])
   useEffect(() => { void load() }, [load])
 
+  const [pending, setPending] = useState<OutboxItem[]>([])
+  useEffect(() => {
+    if (!user) return
+    let alive = true
+    const refresh = () => void listOutbox(user.id).then((l) => { if (alive) setPending(l) })
+    refresh()
+    const off = onOutboxNotice((n) => {
+      refresh()
+      if (n.kind === 'sent') void load()
+    })
+    return () => { alive = false; off() }
+  }, [user, load])
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     return items.filter((s) => {
@@ -147,6 +161,30 @@ export function MySubmissionsPage() {
       </div>
 
       {error && <Alert tone="danger" className="mt-4" action={<Button size="sm" variant="secondary" onClick={() => void load()}>Retry</Button>}>{error}</Alert>}
+
+      {pending.length > 0 && (
+        <section aria-label="Sending" className="mt-6">
+          <h2 className="mb-3 flex items-baseline gap-2">
+            <span className="text-lg font-bold">Sending</span>
+            <span className="text-sm font-medium text-muted">Saved on this phone</span>
+            <span className="ml-auto text-sm font-semibold tabular-nums text-muted">{pending.length}</span>
+          </h2>
+          <ul className="space-y-3">
+            {pending.map((p) => (
+              <li key={p.clientSubmissionId} className="relative flex items-center gap-2 overflow-hidden rounded-2xl border border-line/80 bg-surface py-3.5 pl-5 pr-4 shadow-card">
+                <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px] bg-marigold" />
+                <span className="text-sm font-bold tabular-nums">{new Date(p.createdAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</span>
+                <span className="text-sm text-muted">{Math.max(1, Math.round(p.durationSec))} s recording</span>
+                <span className="ml-auto">
+                  {typeof navigator !== 'undefined' && !navigator.onLine
+                    ? <Badge tone="warn">Waiting for internet</Badge>
+                    : <Badge tone="accent" dot>Sending…</Badge>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="mt-6">
         {loading ? (
