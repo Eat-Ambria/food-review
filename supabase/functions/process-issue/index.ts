@@ -34,7 +34,7 @@ const PUSH_READY = Boolean(VAPID_PUBLIC && VAPID_PRIVATE)
 const WHAPI_TOKEN = Deno.env.get('WHAPI_API_TOKEN') ?? ''
 const APP_URL = (Deno.env.get('APP_URL') ?? '').replace(/\/?$/, '/')
 if (PUSH_READY) webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE)
-const CRON_RETRIES_PER_RUN = 5
+const CRON_RETRIES_PER_RUN = 20
 const CRON_TIME_BUDGET_MS = 90_000
 
 const allowedOrigins = (Deno.env.get('ALLOWED_ORIGINS') ?? '')
@@ -196,7 +196,7 @@ async function callGeminiWithRetry(db: Db, payload: string, categoryNames: strin
     try { return await callGemini(db, payload, categoryNames, submissionId, userId, GEMINI_MODEL) } catch (e) {
       last = e
       if (!(e instanceof AiError) || !e.retryable || attempt === waits.length) break
-      await new Promise((r) => setTimeout(r, waits[attempt]))
+      await new Promise((r) => setTimeout(r, waits[attempt] * (0.6 + Math.random() * 0.8)))
     }
   }
   if (GEMINI_FALLBACK_MODEL && GEMINI_FALLBACK_MODEL !== GEMINI_MODEL && last instanceof AiError && last.retryable) {

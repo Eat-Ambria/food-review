@@ -23,10 +23,11 @@ export class TranscriptionError extends Error {
   }
 }
 
-const AUTO_RETRIES = 2
+const AUTO_RETRIES = 4
 const BUSY_RETRIES = 8
-const PARALLEL = 5
+const PARALLEL = 4
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+const jitter = (ms: number) => Math.round(ms * (0.6 + Math.random() * 0.8))
 
 async function sendChunk(blob: Blob, index: number, clientId: string): Promise<ChunkResult> {
   const form = new FormData()
@@ -56,12 +57,12 @@ async function sendChunk(blob: Blob, index: number, clientId: string): Promise<C
     if (busy && busyCount < BUSY_RETRIES) {
       busyCount++
       attempt--
-      await wait(4000)
+      await wait(jitter(4000))
       continue
     }
     if (retryAt) throw new TranscriptionError(message, true, null, retryAt)
     if (!retryable || attempt >= AUTO_RETRIES || !navigator.onLine) throw new TranscriptionError(message, retryable, null)
-    await wait(1500 * (attempt + 1))
+    await wait(jitter(Math.min(12_000, 1500 * 2 ** attempt)))
   }
 }
 

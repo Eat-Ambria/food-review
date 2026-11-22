@@ -69,7 +69,7 @@ describe('transcribe', () => {
     await expect(transcribe(new Blob(['a']), 'cid', () => {})).rejects.toThrow(/No words/)
   })
 
-  it('retries a temporary failure twice, then gives up with the partial state', async () => {
+  it('retries a temporary failure four times, then gives up with the partial state', async () => {
     vi.useFakeTimers()
     try {
       toWavChunks.mockResolvedValue(chunks(1))
@@ -78,7 +78,7 @@ describe('transcribe', () => {
       const assertion = expect(p).rejects.toMatchObject({ retryable: true, partial: { total: 1 } })
       await vi.runAllTimersAsync()
       await assertion
-      expect(invoke).toHaveBeenCalledTimes(3)
+      expect(invoke).toHaveBeenCalledTimes(5)
     } finally {
       vi.useRealTimers()
     }

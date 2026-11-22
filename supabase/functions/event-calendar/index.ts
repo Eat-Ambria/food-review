@@ -474,8 +474,20 @@ async function calGet<T = unknown[]>(path: string): Promise<T> {
   }
 }
 
+const CACHE_MS = 60_000
+const cache = new Map<string, { at: number; value: Promise<unknown> }>()
+function calGetCached<T = unknown[]>(path: string): Promise<T> {
+  const hit = cache.get(path)
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value as Promise<T>
+  if (cache.size > 200) cache.clear()
+  const value = calGet<T>(path)
+  cache.set(path, { at: Date.now(), value })
+  value.catch(() => cache.delete(path))
+  return value
+}
+
 async function killSwitchOn(): Promise<boolean> {
-  const ks = await calGet<{ value: string }[]>('app_settings?select=value&key=eq.kill_switch')
+  const ks = await calGetCached<{ value: string }[]>('app_settings?select=value&key=eq.kill_switch')
   return ks[0]?.value === 'on'
 }
 
@@ -484,9 +496,9 @@ async function eventsOn(date: string, venueIds: string[]): Promise<CalEvent[]> {
 
   const base = `events?select=${EVENT_FIELDS}&deleted_at=is.null&or=(status.is.null,status.neq.Cancelled)${venueFilter}`
   const [sameDay, spanning, villa] = await Promise.all([
-    calGet<CalEvent[]>(`${base}&date=eq.${date}&order=time.asc&limit=200`),
-    calGet<CalEvent[]>(`${base}&date=lt.${date}&end_date=gte.${date}&limit=100`),
-    calGet<CalEvent[]>(`${base}&check_in_date=lt.${date}&check_out_date=gte.${date}&limit=100`),
+    calGetCached<CalEvent[]>(`${base}&date=eq.${date}&order=time.asc&limit=200`),
+    calGetCached<CalEvent[]>(`${base}&date=lt.${date}&end_date=gte.${date}&limit=100`),
+    calGetCached<CalEvent[]>(`${base}&check_in_date=lt.${date}&check_out_date=gte.${date}&limit=100`),
   ])
   const seen = new Set<string>()
   return [...sameDay, ...spanning, ...villa].filter((e) => (seen.has(e.id) ? false : (seen.add(e.id), true)))

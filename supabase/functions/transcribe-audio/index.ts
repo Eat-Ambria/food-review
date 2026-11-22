@@ -148,24 +148,33 @@ Deno.serve(async (req) => {
   if (keyterms.length) body.append('keyterms', JSON.stringify(keyterms))
 
   const started = Date.now()
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), SARVAM_TIMEOUT_MS)
   let httpStatus = 0
   let payload: Record<string, unknown> = {}
   let networkError: string | null = null
-  try {
-    const res = await fetch(SARVAM_URL, {
-      method: 'POST',
-      headers: { 'api-subscription-key': SARVAM_KEY },
-      body,
-      signal: ctrl.signal,
-    })
-    httpStatus = res.status
-    payload = await res.json().catch(() => ({}))
-  } catch (e) {
-    networkError = (e as Error).name === 'AbortError' ? 'Sarvam timed out' : `Network error: ${(e as Error).message}`
-  } finally {
-    clearTimeout(timer)
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), SARVAM_TIMEOUT_MS)
+    let retryAfterMs = 0
+    httpStatus = 0
+    payload = {}
+    networkError = null
+    try {
+      const res = await fetch(SARVAM_URL, {
+        method: 'POST',
+        headers: { 'api-subscription-key': SARVAM_KEY },
+        body,
+        signal: ctrl.signal,
+      })
+      httpStatus = res.status
+      retryAfterMs = Math.min(5000, Number(res.headers.get('retry-after') ?? 0) * 1000 || 0)
+      payload = await res.json().catch(() => ({}))
+    } catch (e) {
+      networkError = (e as Error).name === 'AbortError' ? 'Sarvam timed out' : `Network error: ${(e as Error).message}`
+    } finally {
+      clearTimeout(timer)
+    }
+    if (networkError || !(httpStatus === 429 || httpStatus >= 500)) break
+    await new Promise((r) => setTimeout(r, retryAfterMs || 1000 + Math.random() * 2000))
   }
   const latency = Date.now() - started
   const ok = !networkError && httpStatus === 200 && typeof payload.transcript === 'string'

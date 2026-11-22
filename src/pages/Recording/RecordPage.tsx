@@ -9,8 +9,8 @@ import { EventMatchCard } from '../../components/EventMatchCard'
 import type { EventMatch } from '../../types/events'
 import { DuplicateError, submitRecording, type DuplicateInfo, type SubmitResult } from '../../services/submitService'
 
-const AUTO_RETRY_EVERY_MS = 10_000
 const AUTO_RETRY_MAX = 6
+const autoRetryDelay = (n: number) => Math.round(8000 * 1.6 ** n * (0.7 + Math.random() * 0.6))
 import { AudioPlayer } from '../../components/AudioPlayer'
 import { fmtTime } from '../../utils/format'
 import { Button } from '../../components/ui/Button'
@@ -314,7 +314,7 @@ export function RecordPage() {
         if (!cancelled) setSubmitted(again)
       } catch { }
       if (!cancelled) setAutoRetries((n) => n + 1)
-    }, AUTO_RETRY_EVERY_MS)
+    }, autoRetryDelay(autoRetries))
     return () => { cancelled = true; clearTimeout(id) }
   }, [submitted, autoRetries])
 
