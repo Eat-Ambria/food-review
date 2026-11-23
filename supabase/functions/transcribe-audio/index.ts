@@ -189,7 +189,7 @@ Deno.serve(async (req) => {
     })
     : db.rpc('stt_release_chunk', { p_id: reservationId })
 
-  await Promise.all([saveResult, db.from('api_usage_log').insert({
+  const logged = db.from('api_usage_log').insert({
     provider: 'sarvam',
     operation: 'transcribe',
     model: MODEL,
@@ -200,7 +200,10 @@ Deno.serve(async (req) => {
              mode: MODE, language: LANGUAGE, keyterms: keyterms.length },
     error: ok ? null : (networkError ?? `${sarvamErr.code ?? httpStatus}: ${sarvamErr.message ?? 'unknown error'}`).slice(0, 500),
     user_id: me.id,
-  })])
+  }).then(() => { })
+  const rt = (globalThis as unknown as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime
+  if (rt?.waitUntil) rt.waitUntil(logged)
+  await saveResult
 
   if (ok) {
     return reply(origin, 200, {

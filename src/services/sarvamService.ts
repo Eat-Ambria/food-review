@@ -25,7 +25,7 @@ export class TranscriptionError extends Error {
 
 const AUTO_RETRIES = 4
 const BUSY_RETRIES = 8
-const PARALLEL = 4
+const PARALLEL = 5
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const jitter = (ms: number) => Math.round(ms * (0.6 + Math.random() * 0.8))
 

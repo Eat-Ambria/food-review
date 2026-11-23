@@ -82,7 +82,10 @@ Rules:
       kursi → "Chairs", plate → "Plates", gaadi → "Parking".
     • Only the thing, never the problem: "Cold Dal" ✗ → "Dal Makhani"; "Dirty Washroom" ✗ → "Washroom".
     • If only a general thing is said ("khana acha nahi tha"), use the general word ("Food"). null ONLY if no thing at all is identifiable.
-- "venue_mentioned": the venue name exactly as said for THIS problem (e.g. "Pushpanjali", "AM", "Manaktala"), else null.
+- "menu_dishes_mentioned" lists dishes from OUR MENU that were said (staff may say them a little differently, e.g. "gold coin" = "Golden Coin").
+  These are FOOD or DRINKS, never venues, halls, people or objects. Use the menu name as "item", and use "Kitchen" for food
+  or "Beverage" for drinks (sections like Mocktails, Shakes, Juices, Aerated Drinks, Tea, Coffee), unless the problem is clearly about something else.
+- "venue_mentioned": the venue name exactly as said for THIS problem (e.g. "Pushpanjali", "AM", "Manaktala"), else null. Never a dish name.
 - "location": the specific place mentioned (e.g. "Banquet Hall", "Washroom", "Amber Lawn"), else null.
 - "original_text": the exact words from the transcript that describe this issue (copy, do not translate).
 - "food_safety": true ONLY when the problem is about food or drink being unsafe or unfit to eat: something found in it
@@ -135,6 +138,7 @@ async function callGemini(db: Db, payload: string, categoryNames: string[], subm
     contents: [{ role: 'user', parts: [{ text: payload }] }],
   }
   const configs: Record<string, unknown>[] = [
+    { responseMimeType: 'application/json', responseJsonSchema: issueSchema(categoryNames), maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: 'low' } },
     { responseMimeType: 'application/json', responseJsonSchema: issueSchema(categoryNames), maxOutputTokens: 4096 },
     { responseMimeType: 'application/json', maxOutputTokens: 4096 },
   ]
@@ -168,19 +172,19 @@ async function callGemini(db: Db, payload: string, categoryNames: string[], subm
       ?.content?.parts ?? []).map((p) => p.text ?? '').join('')
     const finish = (body.candidates as { finishReason?: string }[] | undefined)?.[0]?.finishReason
 
-    await db.from('api_usage_log').insert({
+    inBackground(db.from('api_usage_log').insert({
       provider: 'gemini', operation: 'extract_and_summarize', model,
       ok: !netErr && status === 200 && Boolean(text), http_status: status || null, latency_ms: Date.now() - started,
 
       usage: { ...(usage as object ?? {}), model_version: (body.modelVersion as string) ?? null,
-               finish_reason: finish ?? null, schema_mode: 'responseJsonSchema' in generationConfig },
+               finish_reason: finish ?? null, schema_mode: 'responseJsonSchema' in generationConfig, thinking_low: 'thinkingConfig' in generationConfig },
       error: netErr ?? (status !== 200 ? `${errMsg?.status ?? status}: ${errMsg?.message ?? ''}`.slice(0, 500) : null),
       submission_id: submissionId, user_id: userId,
-    })
+    }).then(() => { }))
 
     if (netErr) throw new AiError(netErr, true)
 
-    if (status === 400 && /responseJsonSchema|response_json_schema|Unknown name|Invalid JSON payload/i.test(errMsg?.message ?? '')) {
+    if (status === 400 && /responseJsonSchema|response_json_schema|thinking|Unknown name|Invalid JSON payload/i.test(errMsg?.message ?? '')) {
       lastErr = new AiError(`Gemini rejected the request: ${errMsg?.message ?? ''}`, false)
       continue
     }
@@ -285,6 +289,76 @@ function resolveVenue(said: string | null, venues: VenueRow[]): string | null {
   return partial.length === 1 ? partial[0].id : null
 }
 
+interface DishRow { name: string; name_hi: string | null; section: string | null }
+interface DishEntry { dish: DishRow; forms: string[][] }
+
+const WORD = /[\p{L}\p{M}\p{N}]+/gu
+const dishWords = (t: string) => [...t.normalize('NFKC').toLowerCase().matchAll(WORD)].map((m) => m[0])
+
+function dishEntries(rows: DishRow[]): DishEntry[] {
+  return rows.map((dish) => {
+    const forms = new Map<string, string[]>()
+    for (const raw of [dish.name, dish.name_hi]) {
+      if (!raw) continue
+      for (const v of [raw, raw.split('(')[0]]) {
+        const w = dishWords(v)
+        if (w.length && w.join(' ').length >= 3) forms.set(w.join(' '), w)
+      }
+    }
+    return { dish, forms: [...forms.values()] }
+  })
+}
+
+const same = (a: string, b: string) =>
+  a === b || (Math.min(a.length, b.length) >= 4 && (a.startsWith(b) || b.startsWith(a)))
+
+function findDishes(text: string, entries: DishEntry[]): { dishes: DishRow[]; stripped: string; words: Set<string> } {
+  const norm = text.normalize('NFKC')
+  const toks = [...norm.matchAll(WORD)].map((m) => ({ w: m[0].toLowerCase(), start: m.index!, end: m.index! + m[0].length }))
+  const hits = new Map<string, DishRow>()
+  const ranges: [number, number][] = []
+  const matched = new Set<string>()
+  for (const { dish, forms } of entries) {
+    for (const f of forms) {
+      if (f.length === 1) {
+        if (toks.some((t) => t.w === f[0])) hits.set(dish.name, dish)
+        continue
+      }
+      for (let i = 0; i + f.length <= toks.length; i++) {
+        if (f.every((w, k) => same(w, toks[i + k].w))) {
+          hits.set(dish.name, dish)
+          ranges.push([toks[i].start, toks[i + f.length - 1].end])
+          for (let k = 0; k < f.length; k++) matched.add(toks[i + k].w)
+        }
+      }
+    }
+  }
+  ranges.sort((a, b) => a[0] - b[0])
+  let stripped = ''
+  let pos = 0
+  for (const [s, e] of ranges) {
+    if (e <= pos) continue
+    stripped += norm.slice(pos, Math.max(pos, s)) + ' '
+    pos = e
+  }
+  stripped += norm.slice(pos)
+  return { dishes: [...hits.values()], stripped: stripped.replace(/\s{2,}/g, ' ').trim(), words: matched }
+}
+
+function isDishWord(said: string | null | undefined, matched: Set<string>): boolean {
+  const w = dishWords(said ?? '')
+  return w.length > 0 && w.every((x) => matched.has(x) || [...matched].some((d) => same(d, x)))
+}
+
+let dishCache: { at: number; list: DishEntry[] } | null = null
+async function loadDishes(db: Db): Promise<DishEntry[]> {
+  if (dishCache && Date.now() - dishCache.at < 5 * 60_000) return dishCache.list
+  const { data, error } = await db.from('dishes').select('name, name_hi, section').eq('is_active', true).limit(5000)
+  if (error) return dishCache?.list ?? []
+  dishCache = { at: Date.now(), list: dishEntries((data ?? []) as DishRow[]) }
+  return dishCache.list
+}
+
 type EdgeRuntimeLike = { waitUntil(p: Promise<unknown>): void }
 function inBackground(p: Promise<unknown>) {
   const rt = (globalThis as unknown as { EdgeRuntime?: EdgeRuntimeLike }).EdgeRuntime
@@ -296,8 +370,10 @@ async function notifyAfterSave(db: Db, submissionId: string, issues: ExtractedIs
 
   let seriousKeywords: string[] = []
   try {
+    const menu = await loadDishes(db)
     seriousKeywords = await findSeriousKeywords(db, issues.filter((it) => it.food_safety)
-      .flatMap((it) => [it.item, it.description, it.summary, it.original_text]))
+      .flatMap((it) => [it.item, it.description, it.summary, it.original_text])
+      .map((t) => (t ? findDishes(t, menu).stripped : t)))
     if (seriousKeywords.length) {
       await db.from('submissions').update({ is_serious: true, serious_keywords: seriousKeywords }).eq('id', submissionId)
     }
@@ -335,8 +411,10 @@ async function processSubmission(db: Db, submissionId: string, actorId: string |
   const attempt = (claimed.attempt_count ?? 0) + 1
   try {
 
+    const menu = await loadDishes(db)
+    const said = findDishes(claimed.reviewed_transcript, menu)
     const [matched, { data: cats }, { data: venueRows }] = await Promise.all([
-      matchEvent(claimed.reviewed_transcript),
+      matchEvent(said.stripped || claimed.reviewed_transcript),
       db.from('issue_categories').select('id, name, description').eq('is_active', true).order('sort_order'),
       db.from('venues').select('id, venue_name, aliases:venue_aliases(alias)').eq('is_active', true),
     ])
@@ -365,6 +443,7 @@ async function processSubmission(db: Db, submissionId: string, actorId: string |
       event_context: ev ? {
         date: ev.date, venue: ev.venue_name, area: ev.sub_venue, function: ev.function_name, shift: ev.shift,
       } : null,
+      menu_dishes_mentioned: said.dishes.slice(0, 15).map((d) => ({ name: d.name, section: d.section })),
       transcript: redact(claimed.reviewed_transcript, guestNames),
     })
     const { issues, model: usedModel } = await callGeminiWithRetry(db, payload, names, submissionId, actorId ?? claimed.submitted_by)
@@ -380,14 +459,15 @@ async function processSubmission(db: Db, submissionId: string, actorId: string |
 
     const perIssue: { venue_id: string | null; event: Record<string, unknown> | null; match_status: string }[] =
       await Promise.all(issues.map(async (it) => {
-        const said = resolveVenue(it.venue_mentioned, venues)
-        if (!said || said === mainVenueId) {
-          return { venue_id: said ?? mainVenueId, event: ev, match_status: String(match.status ?? 'unknown') }
+        const venueSaid = isDishWord(it.venue_mentioned, said.words) ? null : it.venue_mentioned
+        const place = resolveVenue(venueSaid, venues)
+        if (!place || place === mainVenueId) {
+          return { venue_id: place ?? mainVenueId, event: ev, match_status: String(match.status ?? 'unknown') }
         }
 
-        const m = await matchEvent((it.venue_mentioned ?? '') + ' ' + it.original_text, mainDate)
+        const m = await matchEvent((venueSaid ?? '') + ' ' + findDishes(it.original_text, menu).stripped, mainDate)
         const e = (m?.status === 'matched' ? m.event : null) as Record<string, unknown> | null
-        return { venue_id: said, event: e, match_status: String(m?.status ?? 'unknown') }
+        return { venue_id: place, event: e, match_status: String(m?.status ?? 'unknown') }
       }))
 
     const catId = new Map(categories.map((c) => [c.name, c.id]))
@@ -446,7 +526,7 @@ async function processSubmission(db: Db, submissionId: string, actorId: string |
     }).eq('id', submissionId)
     if (upErr) throw new Error(`Saving submission failed: ${upErr.message}`)
 
-    await notifyAfterSave(db, submissionId, issues)
+    inBackground(notifyAfterSave(db, submissionId, issues))
 
     return { claimed: true, status, issues, event: match }
   } catch (e) {
