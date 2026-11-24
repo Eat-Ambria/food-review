@@ -59,6 +59,8 @@ type Db = ReturnType<typeof createClient>
 
 const SYSTEM_PROMPT = `You are an event operations issue extraction and summarization assistant for a banquet and events company in India.
 You receive a complaint transcript recorded by staff. It may be Hindi, English or Hinglish (Hindi words in Devanagari, English words in Latin).
+The company is called "Ambria" (venues like "Ambria Pushpanjali"). Speech-to-text often mishears it as "Embrya", "Embria", "Ambriya",
+"एम्ब्रिया" or "अम्ब्रिया": always write it as "Ambria" in English fields.
 
 Your task: find every SEPARATE operational issue in the transcript and return them as JSON.
 
@@ -216,6 +218,9 @@ async function callGeminiWithRetry(db: Db, payload: string, categoryNames: strin
   throw last
 }
 
+const BRAND_RE = /\b[ae]mb(?:e)?r[iy]{1,2}a\b|एम्ब्रिया|अम्ब्रिया|एंब्रिया|अंब्रिया/gi
+const fixBrand = (t: string) => t.replace(BRAND_RE, 'Ambria')
+
 function tidyItem(raw: string): string | null {
   const t = raw.replace(/\s+/g, ' ').replace(/^["'`]+|["'`.]+$/g, '').trim().slice(0, 60)
   if (!t || /^(null|none|n\/a|-)$/i.test(t)) return null
@@ -242,11 +247,11 @@ function validateIssues(text: string, categoryNames: string[]): ExtractedIssue[]
 
       category: allowed.get(str(r.category).toLowerCase()) ?? 'Other',
       item: tidyItem(str(r.item)),
-      venue_mentioned: str(r.venue_mentioned).slice(0, 80) || null,
-      description: description.slice(0, 500),
-      location: str(r.location) || null,
+      venue_mentioned: fixBrand(str(r.venue_mentioned)).slice(0, 80) || null,
+      description: fixBrand(description).slice(0, 500),
+      location: fixBrand(str(r.location)) || null,
       original_text: str(r.original_text).slice(0, 1000),
-      summary,
+      summary: fixBrand(summary),
       food_safety: r.food_safety !== false,
     }
   })

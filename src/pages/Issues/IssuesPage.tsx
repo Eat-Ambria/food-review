@@ -13,6 +13,7 @@ import { useBarTitle } from '../../layouts/barTitle'
 import { Button } from '../../components/ui/Button'
 import { Icon } from '../../components/Icon'
 import { SHIFT_ORDER, shiftIcon } from '../../utils/categoryStyle'
+import { dayMonth } from '../../utils/dates'
 
 type Range = 'today' | 'yesterday' | '7d' | '30d' | 'custom'
 
@@ -182,7 +183,9 @@ export function IssuesPage() {
   const activeFilters = [venueId, category, query].filter(Boolean).length
   const today = istToday()
   const rangeLabel = (r: Range) => r === 'today' ? fullDate(today) : r === 'yesterday' ? fullDate(shift(today, -1))
-    : r === '7d' ? 'Last 7 days' : r === '30d' ? 'Last 30 days' : from === to ? fullDate(from) : 'Custom dates'
+    : r === '7d' ? 'Last 7 days' : r === '30d' ? 'Last 30 days'
+    : range !== 'custom' ? 'Custom dates…'
+    : from === to ? `Custom: ${fullDate(from)}` : `${dayMonth(from)} – ${dayMonth(to)}`
   const multiDay = groups.length > 1 || from !== to
 
   return (

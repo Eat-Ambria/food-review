@@ -27,6 +27,11 @@ export const relativeDay = (iso: string): string | null => {
   return iso === t ? 'Today' : iso === shiftDay(t, -1) ? 'Yesterday' : null
 }
 
+export const dayMonth = (iso: string) => {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
+
 export const fullDate = (iso: string) => {
   const [y, m, d] = iso.split('-').map(Number)
   return new Date(y, m - 1, d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
