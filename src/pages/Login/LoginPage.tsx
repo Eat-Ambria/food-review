@@ -83,7 +83,7 @@ export function LoginPage() {
               <div className="relative">
                 <Icon name="user" className="pointer-events-none absolute left-3.5 top-1/2 size-[18px] -translate-y-1/2 text-faint" />
                 <input id="username" autoFocus={!username} autoCapitalize="none" autoCorrect="off" spellCheck={false}
-                  autoComplete="username" placeholder="e.g. rahul sharma"
+                  autoComplete="username" placeholder="e.g. rahul or rahul sharma"
                   value={username} onChange={(e) => setUsername(e.target.value)}
                   className={inputClass('lg', 'pl-11')} />
               </div>

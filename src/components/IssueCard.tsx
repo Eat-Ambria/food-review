@@ -8,7 +8,7 @@ import { ItemTag } from './ItemTag'
 import { Spinner } from './ui/Spinner'
 import { personName } from '../utils/personName'
 
-export const ISSUE_COLS = '@3xl:grid @3xl:grid-cols-[8.5rem_6.5rem_8rem_minmax(0,1fr)_8.5rem_7.75rem_1.25rem] @3xl:items-center @3xl:gap-x-4'
+export const ISSUE_COLS = '@3xl:grid @3xl:grid-cols-[8.5rem_6.5rem_10rem_minmax(0,1fr)_7.5rem_7.75rem_1.25rem] @3xl:items-center @3xl:gap-x-4'
 
 function Highlighted({ text, part }: { text: string; part: string | null }) {
   const i = part ? text.indexOf(part) : -1
@@ -72,7 +72,7 @@ export function IssueCard({ issue, focused = false }: { issue: FeedIssue; focuse
           <span className="@3xl:min-w-0"><CategoryChip name={issue.category} className="max-w-full justify-center @3xl:w-full" /></span>
           <span className={issue.is_serious ? '' : 'hidden @3xl:block'}><Priority serious={issue.is_serious} keywords={issue.serious_keywords} /></span>
           <span className="min-w-0">
-            {issue.item ? <ItemTag item={issue.item} category={issue.category} /> : <span className="hidden pl-3 text-ink/40 @3xl:inline">—</span>}
+            {issue.item ? <ItemTag item={issue.item} category={issue.category} wrap /> : <span className="hidden pl-3 text-ink/40 @3xl:inline">—</span>}
           </span>
         </span>
         <span className="row-text min-w-0 text-sm leading-6 text-ink">

@@ -104,7 +104,7 @@ function TopSearch({ canSeeIssues }: { canSeeIssues: boolean }) {
   )
 }
 
-function SideNav({ work, admin }: { work: NavItem[]; admin: NavItem[] }) {
+function SideNav({ work, admin, action }: { work: NavItem[]; admin: NavItem[]; action?: { label: string; icon: IconName; onClick: () => void; className?: string } }) {
   return (
     <>
       <Brand />
@@ -122,6 +122,14 @@ function SideNav({ work, admin }: { work: NavItem[]; admin: NavItem[] }) {
           </div>
         )}
       </nav>
+      {action && (
+        <div className={`relative z-10 px-4 pb-5 pt-4 ${action.className ?? ''}`}>
+          <button type="button" onClick={action.onClick}
+            className="flex h-11 w-full items-center gap-3 rounded-xl px-4 text-sm font-medium text-white/65 transition-colors hover:bg-white/[0.07] hover:text-white">
+            <Icon name={action.icon} className="size-5 shrink-0" />{action.label}
+          </button>
+        </div>
+      )}
 
       <svg aria-hidden="true" viewBox="0 0 272 140" preserveAspectRatio="none" className="pointer-events-none absolute inset-x-0 bottom-0 h-36 w-full">
         <defs>
@@ -146,6 +154,15 @@ export function AppLayout() {
   const location = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [barTitle, setBarTitle] = useState<string | null>(null)
+  const [docked, setDocked] = useState(() => {
+    try { const saved = localStorage.getItem('sidebar-docked'); if (saved !== null) return saved === '1' } catch { }
+    return typeof window !== 'undefined' && window.innerWidth >= 1280
+  })
+  const dock = (on: boolean) => {
+    setDocked(on)
+    setMenuOpen(false)
+    try { localStorage.setItem('sidebar-docked', on ? '1' : '0') } catch { }
+  }
   useEffect(() => { setMenuOpen(false) }, [location.pathname])
 
   useEffect(() => {
@@ -174,19 +191,22 @@ export function AppLayout() {
         <path d="M600 900 C 820 760, 1040 700, 1220 520 S 1420 260, 1520 230 L 1520 960 L 600 960 Z" fill="#ffffff" fillOpacity="0.45" />
       </svg>
 
-      <aside className={`sticky top-0 z-20 hidden h-screen w-[17rem] shrink-0 flex-col overflow-y-auto ${SIDEBAR_BG} md:flex`}>
-        <SideNav work={work} admin={admin} />
-      </aside>
+      {docked && (
+        <aside className={`sticky top-0 z-20 hidden h-screen w-[17rem] shrink-0 flex-col overflow-y-auto ${SIDEBAR_BG} md:flex`}>
+          <SideNav work={work} admin={admin} action={{ label: 'Hide menu', icon: 'arrowLeft', onClick: () => dock(false) }} />
+        </aside>
+      )}
 
       {menuOpen && (
-        <div className="fixed inset-0 z-[60] md:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+        <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true" aria-label="Menu">
           <div className="fade-in absolute inset-0 bg-navy-950/45 backdrop-blur-[2px]" onClick={() => setMenuOpen(false)} aria-hidden="true" />
           <aside className={`drawer-in absolute inset-y-0 left-0 flex w-[17rem] max-w-[85vw] flex-col overflow-y-auto pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-[8px_0_30px_-10px_rgb(0_0_0/0.5)] ${SIDEBAR_BG}`}>
             <button type="button" onClick={() => setMenuOpen(false)} aria-label="Close menu"
               className="absolute right-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-20 flex size-9 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white">
               <Icon name="x" className="size-5" />
             </button>
-            <SideNav work={work} admin={admin} />
+            <SideNav work={work} admin={admin}
+              action={{ label: 'Keep menu open', icon: 'menu', onClick: () => dock(true), className: 'hidden md:block' }} />
           </aside>
         </div>
       )}
@@ -212,6 +232,12 @@ export function AppLayout() {
         </header>
 
         <div className="sticky top-0 z-30 hidden h-[4.5rem] items-center justify-end border-b border-black/[0.04] bg-[#f6f5f2]/80 px-8 shadow-[0_8px_24px_-20px_rgb(23_32_51/0.35)] backdrop-blur-md md:flex lg:px-10">
+          {!docked && hasMenu && (
+            <button type="button" onClick={() => setMenuOpen(true)} aria-label="Open menu" aria-expanded={menuOpen}
+              className={`-ml-2 flex size-11 shrink-0 items-center justify-center rounded-full text-ink/80 transition-colors hover:bg-ink/[0.06] hover:text-ink ${barTitle ? 'mr-3' : 'mr-auto'}`}>
+              <Icon name="menu" className="size-6" />
+            </button>
+          )}
           {barTitle && <h1 className="mr-auto shrink-0 whitespace-nowrap pr-4 font-serif text-[1.75rem] font-medium lg:pr-6 lg:text-[2.1rem] leading-none tracking-[-0.02em] text-ink">{barTitle}</h1>}
           <TopSearch canSeeIssues={work.some((w) => w.to === '/issues')} />
           {isPoc && (
