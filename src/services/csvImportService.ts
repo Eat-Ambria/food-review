@@ -7,7 +7,7 @@ import { createUsers } from './userAdminService'
 export const MAX_FILE_BYTES = 1_000_000
 export const MAX_ROWS = 2000
 const CHUNK_SIZE = 25
-const USERNAME_RE = /^[a-z0-9]+(\.[a-z0-9]+)*$/
+const USERNAME_RE = /^[a-z0-9]+([ .][a-z0-9]+)*$/
 
 const HEADER_MAP: Record<string, keyof RawRow> = {
   name: 'name', fullname: 'name', employeename: 'name', employee: 'name',
@@ -224,7 +224,7 @@ export function revalidate(
 
     if (r.username) {
       if (r.username.length > 64 || !USERNAME_RE.test(r.username)) {
-        errors.push('Username can only use lowercase letters, numbers and dots (e.g. rahul.sharma)')
+        errors.push('Username can only use small letters, numbers and single spaces (e.g. rahul sharma)')
       } else if (existing.usernames.has(r.username)) {
         errors.push(`Username "${r.username}" already exists`)
       } else if ((usernameCount.get(r.username) ?? 0) > 1) {

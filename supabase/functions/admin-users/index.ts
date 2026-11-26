@@ -40,17 +40,17 @@ interface InRow {
 
 interface RowResult { index: number; ok: boolean; user_id?: string; username?: string; error?: string }
 
-const USERNAME_RE = /^[a-z0-9]+(\.[a-z0-9]+)*$/
+const USERNAME_RE = /^[a-z0-9]+([ .][a-z0-9]+)*$/
 const ROLES = new Set(['admin', 'recorder', 'poc'])
 
 function validate(r: InRow): string | null {
   const name = String(r.name ?? '').trim()
-  const username = String(r.username ?? '').trim().toLowerCase()
+  const username = String(r.username ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
   if (!name) return 'Name is empty'
   if (name.length > 120) return 'Name is longer than 120 characters'
   if (!username) return 'Username is empty'
   if (username.length > 64 || !USERNAME_RE.test(username)) {
-    return 'Username can only use lowercase letters, numbers and dots'
+    return 'Username can only use small letters, numbers and single spaces'
   }
   const roles = rolesOf(r)
   if (roles.length === 0) return 'Choose at least one role'
@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
     const problem = validate(r)
     if (problem) { results.push({ index: r.index, ok: false, error: problem }); continue }
 
-    const username = String(r.username).trim().toLowerCase()
+    const username = String(r.username).trim().toLowerCase().replace(/\s+/g, ' ')
     const clash = clashOf(username)
     if (clash) { results.push({ index: r.index, ok: false, error: clash }); continue }
 

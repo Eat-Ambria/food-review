@@ -36,6 +36,7 @@ export interface FeedIssue {
 export interface Compliment {
   id: string; submission_id: string; created_at: string; event_day: string; item: string | null; summary: string
   original_text: string | null; venue_id: string | null; venue_name: string | null; recorded_by: string | null
+  transcript?: string | null; audio_path?: string | null
 }
 
 export async function fetchCompliments(from: string, to: string): Promise<Compliment[]> {

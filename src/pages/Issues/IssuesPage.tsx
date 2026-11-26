@@ -7,6 +7,7 @@ import { fetchCompliments, fetchIssues, listCategories, submissionDays, type Com
 import { listVenues } from '../../services/venueService'
 import type { Venue } from '../../types/events'
 import { IssueCard, IssueTableHead } from '../../components/IssueCard'
+import { PraiseRow } from '../../components/PraiseRow'
 import { ItemTag } from '../../components/ItemTag'
 import { itemCounts, sortByItem } from '../../utils/itemGroups'
 import { FilterSelect, SearchInput, inputClass } from '../../components/ui/Field'
@@ -319,16 +320,8 @@ export function IssuesPage() {
             </div>
             <ul className="divide-y divide-line">
               {list.map((p) => (
-                <li key={p.id} className="px-4 py-2.5">
-                  <p className="text-sm leading-relaxed">
-                    {p.item && <span className="font-semibold">{p.item}: </span>}
-                    <span className="text-ink/85">{p.summary}</span>
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted">
-                    {[p.venue_name ?? 'Venue not identified', personName(p.recorded_by), multiDay ? fullDate(p.event_day) : null,
-                      new Date(p.created_at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' })].filter(Boolean).join('  |  ')}
-                  </p>
-                </li>
+                <PraiseRow key={p.id} p={p} meta={[p.venue_name ?? 'Venue not identified', personName(p.recorded_by), multiDay ? fullDate(p.event_day) : null,
+                  new Date(p.created_at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' })].filter(Boolean).join('  |  ')} />
               ))}
             </ul>
             {shown.length > 3 && (
