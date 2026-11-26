@@ -2,7 +2,7 @@
 const SHELL = 'issue-desk-shell-v3'
 const ASSETS = 'issue-desk-assets-v3'
 const MAX_ASSETS = 80
-const NAV_TIMEOUT_MS = 3500
+const NAV_TIMEOUT_MS = 1500
 
 async function trim(cacheName, max) {
   const cache = await caches.open(cacheName)
@@ -68,6 +68,10 @@ self.addEventListener('fetch', (event) => {
     event.waitUntil(network.then((res) => (res.ok ? saveShell(res.clone()) : null)).catch(() => { }))
     event.respondWith((async () => {
       const cached = () => caches.open(SHELL).then((c) => c.match('shell'))
+      if (self.navigator && self.navigator.onLine === false) {
+        const hit = await cached()
+        if (hit) return hit
+      }
       try {
         return await Promise.race([
           network,

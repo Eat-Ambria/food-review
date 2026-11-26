@@ -53,6 +53,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    const saved = readCachedProfile()
+    if (saved) { setUser(saved); setLoading(false) }
     supabase.auth.getSession().then(async ({ data }) => {
       await loadProfile(data.session?.user.id)
       setLoading(false)
