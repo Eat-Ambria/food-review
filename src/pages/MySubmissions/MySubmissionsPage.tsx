@@ -4,7 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { fetchMySubmissions, listCategories, type MySubmission } from '../../services/issueService'
 import { listVenues } from '../../services/venueService'
-import { listOutbox, onOutboxNotice, type OutboxItem } from '../../services/outbox'
+import { listOutbox, onOutboxNotice, removeFromOutbox, runOutbox, type OutboxItem } from '../../services/outbox'
 import type { Venue } from '../../types/events'
 import { Badge } from '../../components/ui/Badge'
 import { FilterSelect, SearchInput, inputClass } from '../../components/ui/Field'
@@ -13,13 +13,16 @@ import { Button, buttonClass } from '../../components/ui/Button'
 import { CategoryChip } from '../../components/CategoryChip'
 import { IssuesByItem } from '../../components/IssuesByItem'
 import { Icon } from '../../components/Icon'
+import { PlayRecording } from '../../components/PlayRecording'
 
 import { fullDate, istDayEnd, istDayOf, istDayStart, istToday, rangeDates, relativeDay, type RangeKey } from '../../utils/dates'
 
 function statusBadge(s: MySubmission) {
   const n = s.issues.length
-  if (s.processing_status === 'pending_assignment' || s.processing_status === 'assigned') return <Badge tone="ok" dot>{n} issue{n === 1 ? '' : 's'}</Badge>
-  if (s.processing_status === 'needs_review') return <Badge tone="warn">Admin will check</Badge>
+  if (s.processing_status === 'pending_assignment' || s.processing_status === 'assigned') {
+    return n ? <Badge tone="ok" dot>{n} issue{n === 1 ? '' : 's'}</Badge> : <Badge tone="ok">Good feedback</Badge>
+  }
+  if (s.processing_status === 'needs_review') return null
   if (s.processing_status === 'failed') return <Badge tone="warn">Will retry</Badge>
   return <Badge dot>Processing</Badge>
 }
@@ -27,7 +30,7 @@ function statusBadge(s: MySubmission) {
 function stripe(s: MySubmission): string {
   if (s.is_serious) return 'bg-danger'
   if (s.processing_status === 'pending_assignment' || s.processing_status === 'assigned') return 'bg-ok'
-  if (s.processing_status === 'needs_review' || s.processing_status === 'failed') return 'bg-warn'
+  if (s.processing_status === 'failed') return 'bg-warn'
   return 'bg-line'
 }
 
@@ -69,14 +72,36 @@ export function MySubmissionsPage() {
     setParams((p) => { p.delete('q'); return p }, { replace: true })
   }, [urlQ, setParams])
 
+  const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine)
+  const [savedCopy, setSavedCopy] = useState<string | null>(null)
+
   const load = useCallback(async () => {
     if (!user) return
+    const key = `my-submissions:${user.id}`
     setLoading(true)
     setError(null)
-    try { setItems(await fetchMySubmissions(user.id, istDayStart(from), istDayEnd(to))) } catch (e) { setError((e as Error).message) }
+    try {
+      const list = await fetchMySubmissions(user.id, istDayStart(from), istDayEnd(to))
+      setItems(list)
+      setSavedCopy(null)
+      try { localStorage.setItem(key, JSON.stringify({ from, to, at: new Date().toISOString(), list })) } catch { }
+    } catch (e) {
+      let saved: { from: string; to: string; at: string; list: MySubmission[] } | null = null
+      try { saved = JSON.parse(localStorage.getItem(key) ?? 'null') } catch { }
+      if (saved && saved.from === from && saved.to === to) { setItems(saved.list); setSavedCopy(saved.at) }
+      else setError(navigator.onLine ? (e as Error).message : 'You are offline. Your list will load when the internet is back.')
+    }
     setLoading(false)
   }, [user, from, to])
   useEffect(() => { void load() }, [load])
+
+  useEffect(() => {
+    const on = () => { setOnline(true); void load() }
+    const off = () => setOnline(false)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, [load])
 
   const [pending, setPending] = useState<OutboxItem[]>([])
   useEffect(() => {
@@ -160,26 +185,44 @@ export function MySubmissionsPage() {
         )}
       </div>
 
+      {savedCopy && (
+        <Alert tone="info" icon="wifiOff" className="mt-4">
+          {online ? 'Could not reach the server.' : 'You are offline.'} Showing your list as it was at {new Date(savedCopy).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}. It updates by itself.
+        </Alert>
+      )}
       {error && <Alert tone="danger" className="mt-4" action={<Button size="sm" variant="secondary" onClick={() => void load()}>Retry</Button>}>{error}</Alert>}
 
       {pending.length > 0 && (
         <section aria-label="Sending" className="mt-6">
           <h2 className="mb-3 flex items-baseline gap-2">
             <span className="text-lg font-bold">Sending</span>
-            <span className="text-sm font-medium text-muted">Saved on this phone</span>
+            <span className="text-sm font-medium text-muted">{online ? 'Saved on this phone' : 'Saved on this phone. Sends by itself when the internet is back.'}</span>
             <span className="ml-auto text-sm font-semibold tabular-nums text-muted">{pending.length}</span>
           </h2>
           <ul className="space-y-3">
             {pending.map((p) => (
-              <li key={p.clientSubmissionId} className="relative flex items-center gap-2 overflow-hidden rounded-2xl border border-line/80 bg-surface py-3.5 pl-5 pr-4 shadow-card">
-                <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[3px] bg-marigold" />
-                <span className="text-sm font-bold tabular-nums">{new Date(p.createdAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}</span>
-                <span className="text-sm text-muted">{Math.max(1, Math.round(p.durationSec))} s recording</span>
-                <span className="ml-auto">
-                  {typeof navigator !== 'undefined' && !navigator.onLine
-                    ? <Badge tone="warn">Waiting for internet</Badge>
-                    : <Badge tone="accent" dot>Sending…</Badge>}
-                </span>
+              <li key={p.clientSubmissionId} className="relative overflow-hidden rounded-2xl border border-line/80 bg-surface py-3.5 pl-5 pr-4 shadow-card">
+                <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-[3px] ${p.attempts > 2 && p.lastError ? 'bg-warn' : 'bg-marigold'}`} />
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold tabular-nums">{new Date(p.createdAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' })}</span>
+                  <PlayRecording blob={p.blob} durationSec={p.durationSec} />
+                  <span className="ml-auto">
+                    {!online
+                      ? <Badge tone="warn">Waiting for internet</Badge>
+                      : p.attempts > 2 && p.lastError ? <Badge tone="warn">Not sent yet</Badge>
+                      : <Badge tone="accent" dot>Sending…</Badge>}
+                  </span>
+                </div>
+                {online && p.attempts > 2 && p.lastError && (
+                  <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                    <p className="min-w-0 flex-1 text-xs text-muted">{p.lastError}</p>
+                    <Button size="sm" variant="secondary" onClick={() => user && void runOutbox(user.id, true)}><Icon name="refresh" />Try again</Button>
+                    <Button size="sm" variant="ghost" className="hover:bg-danger-soft! hover:text-danger!"
+                      onClick={() => { if (window.confirm('Delete this recording from this phone? It has not been sent.')) void removeFromOutbox(p.clientSubmissionId) }}>
+                      <Icon name="trash" />Delete
+                    </Button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>

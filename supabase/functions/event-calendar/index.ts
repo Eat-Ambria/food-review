@@ -94,8 +94,8 @@ export function hindiInitials(w: string): string | null {
 export const nameKey = (s: string) => s.toLowerCase().replace(/aa/g, 'a').replace(/ee|ii/g, 'i').replace(/oo/g, 'u')
   .replace(/w/g, 'v').replace(/ph/g, 'f').replace(/[^a-z]/g, '')
 
-export function todayIST(): Date {
-  const ist = new Date(Date.now() + 5.5 * 3600_000)
+export function todayIST(at: number = Date.now()): Date {
+  const ist = new Date(at + 5.5 * 3600_000)
   return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()))
 }
 const iso = (d: Date) => d.toISOString().slice(0, 10)
@@ -225,14 +225,22 @@ const COMMON_SURNAMES = new Set(['singh', 'kumar', 'sharma', 'gupta', 'agarval',
   'devi', 'kaur', 'khan', 'yadav', 'mehta', 'shah', 'arora', 'kapur', 'kapor', 'malhotra', 'chauhan', 'sethi', 'bansal', 'garg', 'mital', 'mitall', 'goyal', 'gupt'])
 
 export function shiftOf(e: CalEvent): string | null {
-  if (e.shift) return e.shift
+  const raw = (e.shift ?? '').toLowerCase()
+  if (raw) {
+    if (/dinner|night|raat/.test(raw)) return 'Dinner'
+    if (/sundowner|evening|hi.?tea|high.?tea|shaam/.test(raw)) return 'Sundowner'
+    if (/lunch|day|noon|dopahar/.test(raw)) return 'Lunch'
+    if (/morning|breakfast|brunch|subah/.test(raw)) return 'Morning'
+    return e.shift
+  }
   if (!e.time) return null
   const h = Number(e.time.slice(0, 2))
   return h < 11 ? 'Morning' : h < 16 ? 'Lunch' : h < 19 ? 'Sundowner' : 'Dinner'
 }
 export const functionNameOf = (e: CalEvent) => (e.event_type === 'Other' ? (e.event_type_other || 'Other') : (e.event_type || null))
 
-export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: string | null = null) {
+export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: string | null = null, recordedAt: string | null = null) {
+  const recMs = recordedAt && !Number.isNaN(Date.parse(recordedAt)) ? Date.parse(recordedAt) : Date.now()
   const { killSwitchOn, eventsOn } = deps
   const t = normalize(transcript)
 
@@ -257,7 +265,7 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
     ...words.map(hindiInitials).filter((x): x is string => Boolean(x)),
     ...joinedInitials,
   ].filter((x) => x.length >= 2)
-  const today = todayIST()
+  const today = todayIST(recMs)
 
   const venues = deps.venues
   const subCount = new Map<string, number>()
@@ -318,8 +326,10 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
     if (near) nearHits.push({ venue: v, via: `sounds like "${near}"`, strength: 1, phrase: near })
   }
 
-  const exactKept = exactHits.filter((h) => !exactHits.some((o) => o !== h && o.phrase.length > h.phrase.length
+  const BRAND = new Set(['ambria', 'embrya', 'embria', 'ambriya'])
+  const longest = exactHits.filter((h) => !exactHits.some((o) => o !== h && o.phrase.length > h.phrase.length
     && (' ' + o.phrase + ' ').includes(' ' + h.phrase + ' ')))
+  const exactKept = longest.some((h) => !BRAND.has(h.phrase)) || subHits.length ? longest.filter((h) => !BRAND.has(h.phrase)) : longest
 
   const venueHits = exactKept.length || subHits.length ? [...exactKept, ...subHits] : nearHits
   const linked = venues.filter((v) => v.calendar_venue_id)
@@ -329,7 +339,10 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
   const { cands, explicit } = detectDates(transcript, t, today)
   const dateSaid = cands.length > 0
 
-  const lateNight = new Date(Date.now() + 5.5 * 3600_000).getUTCHours() < 5
+  const lateNight = new Date(recMs + 5.5 * 3600_000).getUTCHours() < 5
+  if (lateNight && dateSaid && !explicit && cands.every((c) => c.date === iso(today))) {
+    cands.push({ date: iso(addDays(today, -1)), weight: cands[0].weight, source: 'said today, recorded after midnight (last night)' })
+  }
   const assumed = lateNight
     ? [{ date: iso(today), weight: 1.5, source: 'not said (today)' },
        { date: iso(addDays(today, -1)), weight: 1.5, source: 'not said (last night, recorded after midnight)' }]
@@ -337,6 +350,17 @@ export async function matchEvent(deps: MatchDeps, transcript: string, hintDate: 
 
   const hinted = hintDate ? [{ date: hintDate, weight: 2, source: 'same day as the rest of the recording' }] : null
   const dates = (dateSaid ? cands : (hinted ?? assumed)).sort((a, b) => b.weight - a.weight).slice(0, 4)
+
+  if (venueHits.length && !searchVenueIds.length) {
+    return {
+      status: 'no_events', event: null, date: dates[0].date,
+      date_source: dateSaid ? (explicit ? 'explicit' : 'relative') : hinted ? 'from_recording' : 'assumed_today',
+      venue: venueHits.length === 1 ? { id: venueHits[0].venue.id, name: venueHits[0].venue.venue_name } : null,
+      venue_candidates: venueHits.map((h) => ({ id: h.venue.id, name: h.venue.venue_name, via: h.via })),
+      candidates: [],
+      reasons: ['This venue is not linked to the Event Calendar, so its function cannot be found. Link it on the Venues page.'],
+    }
+  }
 
   if (await killSwitchOn()) return { status: 'calendar_paused', reasons: ['The Event Calendar is paused (kill switch on).'] }
 
@@ -572,7 +596,8 @@ deno?.serve(async (req: Request) => {
       const { data: venueRows } = await db.from('venues')
         .select('id, venue_name, calendar_venue_id, sub_venues, aliases:venue_aliases(alias)').eq('is_active', true)
       const venues = (venueRows ?? []) as Venue[]
-      const result = await matchEvent({ venues, killSwitchOn, eventsOn }, transcript, hint)
+      const recordedAt = typeof body.recorded_at === 'string' && !Number.isNaN(Date.parse(body.recorded_at)) ? body.recorded_at : null
+      const result = await matchEvent({ venues, killSwitchOn, eventsOn }, transcript, hint, recordedAt)
       await log('match_event', true, { status: result.status, candidates: (result as { candidates?: unknown[] }).candidates?.length ?? 0 })
       return reply(origin, 200, result)
     }

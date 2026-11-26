@@ -7,11 +7,23 @@ export function Modal({ open, title, description, onClose, children, footer, siz
   open: boolean; title: string; description?: ReactNode; onClose: () => void; children: ReactNode; footer?: ReactNode; size?: 'md' | 'lg'
 }) {
   const boxRef = useRef<HTMLDivElement>(null)
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  const openerRef = useRef<HTMLElement | null>(null)
+  if (open && !openerRef.current && typeof document !== 'undefined') openerRef.current = document.activeElement as HTMLElement | null
 
   useEffect(() => {
     if (!open) return
-    const prevFocus = document.activeElement as HTMLElement | null
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { closeRef.current(); return }
+      if (e.key !== 'Tab' || !boxRef.current) return
+      const items = [...boxRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+      if (!items.length) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+    }
     document.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -20,9 +32,11 @@ export function Modal({ open, title, description, onClose, children, footer, siz
     return () => {
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = prev
-      prevFocus?.focus?.()
+      const opener = openerRef.current
+      openerRef.current = null
+      opener?.focus?.()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 

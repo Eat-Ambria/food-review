@@ -116,6 +116,14 @@ describe('shiftOf', () => {
     expect(shiftOf(e(null, '20:00'))).toBe('Dinner')
     expect(shiftOf(e(null, null))).toBeNull()
   })
+
+  it('understands shift names written differently in the Calendar', () => {
+    expect(shiftOf(e('DINNER', null))).toBe('Dinner')
+    expect(shiftOf(e('Night', null))).toBe('Dinner')
+    expect(shiftOf(e('Evening', null))).toBe('Sundowner')
+    expect(shiftOf(e('Day', null))).toBe('Lunch')
+    expect(shiftOf(e('Breakfast', null))).toBe('Morning')
+  })
 })
 
 const VENUES: Venue[] = [
@@ -164,6 +172,55 @@ describe('matchEvent', () => {
     expect(r.venue!.id).toBe('v-ap')
     expect(r.date_source).toBe('assumed_today')
     expect(d.eventsOn).toHaveBeenCalledWith(TODAY, ['ap'])
+  })
+
+  it('"Ambria" said with another venue name does not also pick Pushpanjali', async () => {
+    const r = await match('Ambria ke Manaktala mein dinner ka khana thanda tha')
+    expect(r.venue!.id).toBe('v-am')
+    expect(r.status).toBe('matched')
+    expect(r.event!.calendar_event_id).toBe('e3')
+  })
+
+  it('at a venue with lunch and dinner, saying dinner or raat picks the night function', async () => {
+    for (const said of ['Pushpanjali mein dinner ka khana thanda tha', 'Pushpanjali mein raat wale function mein khana thanda tha', 'पुष्पांजलि में रात को खाना ठंडा था']) {
+      const r = await match(said)
+      expect(r.status).toBe('matched')
+      expect(r.event!.calendar_event_id).toBe('e2')
+    }
+    const lunch = await match('Pushpanjali mein lunch mein khana thanda tha')
+    expect(lunch.event!.calendar_event_id).toBe('e1')
+  })
+
+  it('a night shift written as "Night" in the Calendar still matches dinner', async () => {
+    const d = deps({ eventsOn: vi.fn(async (date: string, ids: string[]) => EVENTS
+      .map((e) => (e.id === 'e2' ? { ...e, shift: 'Night' } : e))
+      .filter((e) => e.date === date && (!ids.length || ids.includes(e.venue_id)))) })
+    const r = await match('Pushpanjali mein dinner ka khana thanda tha', d)
+    expect(r.event!.calendar_event_id).toBe('e2')
+  })
+
+  it('a recording processed later still uses the day it was recorded', async () => {
+    const r = await match('Pushpanjali mein Meena ji ke function mein khana thanda tha', deps(), null)
+    expect(r.status).not.toBe('matched')
+    const later = (await matchEvent(deps(), 'Pushpanjali mein Meena ji ke function mein khana thanda tha', null, '2026-11-15T08:00:00Z')) as Result
+    expect(later.date).toBe('2026-11-15')
+    expect(later.event!.calendar_event_id).toBe('e5')
+  })
+
+  it('"aaj" said after midnight also checks last night', async () => {
+    const r = (await matchEvent(deps(), 'Pushpanjali mein aaj dinner mein khana thanda tha', null, '2026-11-17T19:10:00Z')) as Result
+    expect(r.status).toBe('matched')
+    expect(r.event!.calendar_event_id).toBe('e2')
+  })
+
+  it('"kal" is the day before the recording, not before today', async () => {
+    const r = (await matchEvent(deps(), 'Pushpanjali mein kal ki shaadi mein khana thanda tha', null, '2026-11-15T08:00:00Z')) as Result
+    expect(r.date).toBe('2026-11-14')
+  })
+
+  it('"Ambria" alone still means Pushpanjali', async () => {
+    const r = await match('Ambria mein lunch ka khana thanda tha')
+    expect(r.venue!.id).toBe('v-ap')
   })
 
   it('a lawn that belongs to only one venue identifies the venue', async () => {

@@ -15,7 +15,7 @@ interface NavItem { to: string; label: string; short?: string; icon: IconName; r
 const WORK: NavItem[] = [
   { to: '/record', label: 'Record', icon: 'mic', roles: ['recorder', 'admin'] },
   { to: '/my-submissions', label: 'My Submissions', short: 'Sent', icon: 'layers', roles: ['recorder', 'admin'] },
-  { to: '/issues', label: 'Issues', icon: 'calendarCheck', roles: ['poc', 'admin'] },
+  { to: '/issues', label: 'Issues', icon: 'calendarCheck', roles: ['recorder', 'poc', 'admin'] },
 ]
 const ADMIN: NavItem[] = [
   { to: '/admin', label: 'Dashboard', icon: 'grid', roles: ['admin'] },
@@ -90,7 +90,7 @@ function TopSearch({ canSeeIssues }: { canSeeIssues: boolean }) {
       <Icon name="search" className="pointer-events-none absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-ink/70" />
       <input ref={ref} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search"
         onKeyDown={(e) => { if (e.key === 'Escape' && q) { e.preventDefault(); clear() } }}
-        placeholder={canSeeIssues ? 'Search issues, venues, users...' : 'Search your submissions...'}
+        placeholder={canSeeIssues ? 'Search issues, dishes, venues…' : 'Search your submissions…'}
         className="h-11 w-full rounded-full border border-ink/10 bg-white/85 pl-11 pr-11 text-[15px] text-ink shadow-[0_1px_2px_rgb(23_32_51/0.04)] outline-none transition-[border-color,box-shadow,background-color] placeholder:text-ink/45 hover:border-ink/20 focus:border-ink/30 focus:bg-white focus:ring-4 focus:ring-ink/[0.05]" />
       {q ? (
         <button type="button" onClick={clear} aria-label="Clear search"
@@ -146,6 +146,18 @@ function SideNav({ work, admin, action }: { work: NavItem[]; admin: NavItem[]; a
   )
 }
 
+function useWide(): boolean {
+  const query = '(min-width: 768px)'
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches)
+  useEffect(() => {
+    const m = window.matchMedia(query)
+    const on = () => setWide(m.matches)
+    m.addEventListener('change', on)
+    return () => m.removeEventListener('change', on)
+  }, [])
+  return wide
+}
+
 const SIDEBAR_BG = 'bg-[linear-gradient(180deg,#1a2335_0%,#141c2c_100%)]'
 
 export function AppLayout() {
@@ -165,13 +177,24 @@ export function AppLayout() {
   }
   useEffect(() => { setMenuOpen(false) }, [location.pathname])
 
+  const wide = useWide()
+  const drawerRef = useRef<HTMLElement>(null)
   useEffect(() => {
     if (!menuOpen) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false) }
+    const opener = document.activeElement as HTMLElement | null
+    requestAnimationFrame(() => drawerRef.current?.querySelector<HTMLElement>('a[href]')?.focus())
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setMenuOpen(false); return }
+      if (e.key !== 'Tab' || !drawerRef.current) return
+      const items = [...drawerRef.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled])')]
+      if (!items.length) return
+      if (e.shiftKey && document.activeElement === items[0]) { e.preventDefault(); items[items.length - 1].focus() }
+      else if (!e.shiftKey && document.activeElement === items[items.length - 1]) { e.preventDefault(); items[0].focus() }
+    }
     document.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev; opener?.focus?.() }
   }, [menuOpen])
 
   if (!user) return null
@@ -200,7 +223,7 @@ export function AppLayout() {
       {menuOpen && (
         <div className="fixed inset-0 z-[60]" role="dialog" aria-modal="true" aria-label="Menu">
           <div className="fade-in absolute inset-0 bg-navy-950/45 backdrop-blur-[2px]" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-          <aside className={`drawer-in absolute inset-y-0 left-0 flex w-[17rem] max-w-[85vw] flex-col overflow-y-auto pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-[8px_0_30px_-10px_rgb(0_0_0/0.5)] ${SIDEBAR_BG}`}>
+          <aside ref={drawerRef} className={`drawer-in absolute inset-y-0 left-0 flex w-[17rem] max-w-[85vw] flex-col overflow-y-auto pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] shadow-[8px_0_30px_-10px_rgb(0_0_0/0.5)] ${SIDEBAR_BG}`}>
             <button type="button" onClick={() => setMenuOpen(false)} aria-label="Close menu"
               className="absolute right-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-20 flex size-9 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white">
               <Icon name="x" className="size-5" />
@@ -226,7 +249,7 @@ export function AppLayout() {
             <span className="truncate text-xs font-medium text-white/50">food review</span>
           </div>
           <div className="flex items-center gap-1 pr-1">
-            {isPoc && <NotificationBell userId={user.id} tone="dark" />}
+            {isPoc && !wide && <NotificationBell userId={user.id} tone="dark" />}
             <AccountMenu tone="dark" />
           </div>
         </header>
@@ -240,7 +263,7 @@ export function AppLayout() {
           )}
           {barTitle && <h1 className="mr-auto shrink-0 whitespace-nowrap pr-4 font-serif text-[1.75rem] font-medium lg:pr-6 lg:text-[2.1rem] leading-none tracking-[-0.02em] text-ink">{barTitle}</h1>}
           <TopSearch canSeeIssues={work.some((w) => w.to === '/issues')} />
-          {isPoc && (
+          {isPoc && wide && (
             <>
               <span aria-hidden="true" className="mx-4 h-9 w-px bg-ink/10 lg:mx-5" />
               <NotificationBell userId={user.id} align="right" />

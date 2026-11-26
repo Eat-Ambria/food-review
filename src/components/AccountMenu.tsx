@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { disablePush, enablePush, pushState, type PushState } from '../lib/push'
+import { listOutbox } from '../services/outbox'
 import { playNotificationSound, setSoundEnabled, soundEnabled } from '../lib/sound'
 import { rolesLabel, rolesOf } from '../types/auth'
 import { Icon } from './Icon'
@@ -49,7 +50,15 @@ export function AccountMenu({ tone = 'light', withName = false }: { tone?: 'ligh
     try { setPush(push === 'on' ? await disablePush() : await enablePush(user.id)) } catch (e) { setPushErr((e as Error).message) }
     setBusy(false)
   }
-  const signOut = async () => { await logout(); navigate('/login', { replace: true }) }
+  const signOut = async () => {
+    if (user) {
+      const waiting = (await listOutbox(user.id)).length
+      if (waiting && !window.confirm(`${waiting} recording${waiting === 1 ? ' has' : 's have'} not been sent yet. They stay on this phone and are sent when you sign in again. Sign out anyway?`)) return
+      await disablePush().catch(() => { })
+    }
+    await logout()
+    navigate('/login', { replace: true })
+  }
 
   return (
     <div className="relative" ref={boxRef}>

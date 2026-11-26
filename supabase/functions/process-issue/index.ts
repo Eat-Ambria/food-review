@@ -35,6 +35,7 @@ const WHAPI_TOKEN = Deno.env.get('WHAPI_API_TOKEN') ?? ''
 const APP_URL = (Deno.env.get('APP_URL') ?? '').replace(/\/?$/, '/')
 if (PUSH_READY) webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE)
 const CRON_RETRIES_PER_RUN = 20
+const CALENDAR_DOWN = 'The Event Calendar could not be reached.'
 const CRON_TIME_BUDGET_MS = 90_000
 
 const allowedOrigins = (Deno.env.get('ALLOWED_ORIGINS') ?? '')
@@ -97,8 +98,12 @@ Rules:
 - "summary": concise professional English for the person who must fix it, naming the item. Maximum two lines (about 30 words). Keep important venue, location, department and event context that was said. No assumptions.
 - Text like [guest] or [phone] is a placeholder for removed private data; keep it as is if needed.
 - If the transcript contains no operational issue at all, return an empty "issues" list.
+- Praise is NOT an issue (e.g. "chhole bahut achhe the", "service was great"). Put each praise in "compliments" instead:
+  "item" (what was praised, Title Case, or null), "venue_mentioned" (or null), "original_text" (exact words) and
+  "summary" (one short English sentence, e.g. "Guests liked the Chole."). Return an empty "compliments" list if there is none.
 Return valid JSON only, in exactly this shape:
-{"issues":[{"category":"<one of the names>","item":"..." or null,"venue_mentioned":"..." or null,"description":"...","location":"..." or null,"original_text":"...","food_safety":true or false,"summary":"..."}]}`
+{"issues":[{"category":"<one of the names>","item":"..." or null,"venue_mentioned":"..." or null,"description":"...","location":"..." or null,"original_text":"...","food_safety":true or false,"summary":"..."}],
+ "compliments":[{"item":"..." or null,"venue_mentioned":"..." or null,"original_text":"...","summary":"..."}]}`
 
 function issueSchema(categoryNames: string[]) {
   return {
@@ -122,8 +127,22 @@ function issueSchema(categoryNames: string[]) {
           required: ['category', 'item', 'venue_mentioned', 'description', 'location', 'original_text', 'food_safety', 'summary'],
         },
       },
+      compliments: {
+        type: 'array',
+        maxItems: MAX_ISSUES,
+        items: {
+          type: 'object',
+          properties: {
+            item: { type: ['string', 'null'] },
+            venue_mentioned: { type: ['string', 'null'] },
+            original_text: { type: 'string' },
+            summary: { type: 'string' },
+          },
+          required: ['item', 'venue_mentioned', 'original_text', 'summary'],
+        },
+      },
     },
-    required: ['issues'],
+    required: ['issues', 'compliments'],
   }
 }
 
@@ -134,7 +153,7 @@ interface ExtractedIssue {
 
 class AiError extends Error { retryable: boolean; constructor(m: string, r: boolean) { super(m); this.retryable = r } }
 
-async function callGemini(db: Db, payload: string, categoryNames: string[], submissionId: string, userId: string | null, model: string = GEMINI_MODEL): Promise<{ issues: ExtractedIssue[]; usage: unknown; model: string }> {
+async function callGemini(db: Db, payload: string, categoryNames: string[], submissionId: string, userId: string | null, model: string = GEMINI_MODEL): Promise<{ issues: ExtractedIssue[]; compliments: Compliment[]; usage: unknown; model: string }> {
   const base = {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
     contents: [{ role: 'user', parts: [{ text: payload }] }],
@@ -197,7 +216,7 @@ async function callGemini(db: Db, payload: string, categoryNames: string[], subm
     if (status !== 200) throw new AiError(`Gemini error ${status}: ${errMsg?.message ?? ''}`, false)
     if (!text) throw new AiError(`Gemini returned no text (finish reason: ${finish ?? 'unknown'})`, finish !== 'SAFETY')
 
-    return { issues: validateIssues(text, categoryNames), usage, model }
+    return { issues: validateIssues(text, categoryNames), compliments: readCompliments(text), usage, model }
   }
   throw lastErr ?? new AiError('Gemini request failed', true)
 }
@@ -221,6 +240,25 @@ async function callGeminiWithRetry(db: Db, payload: string, categoryNames: strin
 const BRAND_RE = /\b[ae]mb(?:e)?r[iy]{1,2}a\b|एम्ब्रिया|अम्ब्रिया|एंब्रिया|अंब्रिया/gi
 const fixBrand = (t: string) => t.replace(BRAND_RE, 'Ambria')
 
+interface Compliment { item: string | null; venue_mentioned: string | null; original_text: string; summary: string }
+
+function readCompliments(text: string): Compliment[] {
+  try {
+    const list = (JSON.parse(text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '')) as { compliments?: unknown }).compliments
+    if (!Array.isArray(list)) return []
+    const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
+    return list.slice(0, MAX_ISSUES).map((raw) => {
+      const r = raw as Record<string, unknown>
+      return {
+        item: tidyItem(str(r.item)),
+        venue_mentioned: fixBrand(str(r.venue_mentioned)).slice(0, 80) || null,
+        original_text: str(r.original_text).slice(0, 1000),
+        summary: fixBrand(str(r.summary)).slice(0, 400),
+      }
+    }).filter((c) => c.summary)
+  } catch { return [] }
+}
+
 function tidyItem(raw: string): string | null {
   const t = raw.replace(/\s+/g, ' ').replace(/^["'`]+|["'`.]+$/g, '').trim().slice(0, 60)
   if (!t || /^(null|none|n\/a|-)$/i.test(t)) return null
@@ -233,16 +271,13 @@ function validateIssues(text: string, categoryNames: string[]): ExtractedIssue[]
   try { parsed = JSON.parse(cleaned) } catch { throw new AiError('Gemini reply was not valid JSON', true) }
   const list = (parsed as { issues?: unknown }).issues
   if (!Array.isArray(list)) throw new AiError('Gemini reply had no "issues" list', true)
-  if (list.length > MAX_ISSUES) throw new AiError('Gemini returned too many issues', true)
-
   const allowed = new Map(categoryNames.map((n) => [n.toLowerCase(), n]))
-  return list.map((raw, i) => {
+  return list.slice(0, MAX_ISSUES).map((raw, i) => {
     const r = raw as Record<string, unknown>
     const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
     const description = str(r.description)
-    const summary = str(r.summary)
+    const summary = str(r.summary).slice(0, 400)
     if (!description || !summary) throw new AiError(`Issue ${i + 1} is missing a description or summary`, true)
-    if (summary.length > 400) throw new AiError(`Issue ${i + 1} summary is longer than two lines`, true)
     return {
 
       category: allowed.get(str(r.category).toLowerCase()) ?? 'Other',
@@ -257,20 +292,23 @@ function validateIssues(text: string, categoryNames: string[]): ExtractedIssue[]
   })
 }
 
+const NOT_A_NAME = new Set(['and', 'the', 'mr', 'mrs', 'ms', 'miss', 'dr', 'shri', 'smt', 'ji', 'family', 'party', 'birthday', 'wedding',
+  'reception', 'engagement', 'anniversary', 'function', 'event', 'golden', 'silver', 'with', 'from', 'wala', 'wale', 'group', 'team', 'ltd',
+  'dal', 'veg', 'pav', 'tea', 'ice', 'hot', 'red', 'new', 'old', 'mrs'])
 function redact(text: string, guestNames: (string | null | undefined)[]): string {
   let out = text.replace(/(?:\+?91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}\b/g, '[phone]')
   const tokens = new Set<string>()
-  for (const g of guestNames) for (const t of (g ?? '').split(/[^A-Za-z]+/)) if (t.length >= 3) tokens.add(t)
+  for (const g of guestNames) for (const t of (g ?? '').split(/[^A-Za-z]+/)) if (t.length >= 3 && !NOT_A_NAME.has(t.toLowerCase())) tokens.add(t)
   for (const t of tokens) out = out.replace(new RegExp(`\\b${t}\\b`, 'gi'), '[guest]')
   return out
 }
 
-async function matchEvent(transcript: string, hintDate: string | null = null): Promise<Record<string, unknown> | null> {
+async function matchEvent(transcript: string, hintDate: string | null = null, recordedAt: string | null = null): Promise<Record<string, unknown> | null> {
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/event-calendar`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'match', transcript, hint_date: hintDate }),
+      body: JSON.stringify({ action: 'match', transcript, hint_date: hintDate, recorded_at: recordedAt }),
     })
     if (!res.ok) return { status: 'calendar_error', reasons: [`Event Calendar error ${res.status}`] }
     return await res.json()
@@ -290,8 +328,12 @@ function resolveVenue(said: string | null, venues: VenueRow[]): string | null {
   const exact = venues.filter((v) => names(v).includes(n))
   if (exact.length === 1) return exact[0].id
 
-  const partial = venues.filter((v) => names(v).some((x) => x.length >= 4 && (' ' + n + ' ').includes(' ' + x + ' ')))
-  return partial.length === 1 ? partial[0].id : null
+  const brand = new Set(['ambria', 'embrya', 'embria', 'ambriya'])
+  const hit = (v: VenueRow, skipBrand: boolean) => names(v).some((x) => x.length >= 4 && !(skipBrand && brand.has(x)) && (' ' + n + ' ').includes(' ' + x + ' '))
+  const partial = venues.filter((v) => hit(v, false))
+  if (partial.length === 1) return partial[0].id
+  const specific = venues.filter((v) => hit(v, true))
+  return specific.length === 1 ? specific[0].id : null
 }
 
 interface DishRow { name: string; name_hi: string | null; section: string | null }
@@ -374,13 +416,24 @@ function inBackground(p: Promise<unknown>) {
 async function notifyAfterSave(db: Db, submissionId: string, issues: ExtractedIssue[]) {
 
   let seriousKeywords: string[] = []
+  const seriousIdx: number[] = []
   try {
-    const menu = await loadDishes(db)
-    seriousKeywords = await findSeriousKeywords(db, issues.filter((it) => it.food_safety)
-      .flatMap((it) => [it.item, it.description, it.summary, it.original_text])
-      .map((t) => (t ? findDishes(t, menu).stripped : t)))
-    if (seriousKeywords.length) {
-      await db.from('submissions').update({ is_serious: true, serious_keywords: seriousKeywords }).eq('id', submissionId)
+    const [menu, match] = await Promise.all([loadDishes(db), loadSeriousMatcher(db)])
+    const all = new Set<string>()
+    const perIssue = issues.map((it, i) => {
+      const kws = it.food_safety
+        ? match([it.item, it.description, it.summary, it.original_text].map((t) => (t ? findDishes(t, menu).stripped : t)))
+        : []
+      if (kws.length) { seriousIdx.push(i); kws.forEach((k) => all.add(k)) }
+      return kws
+    })
+    seriousKeywords = [...all]
+    await db.from('submissions').update({ is_serious: seriousKeywords.length > 0, serious_keywords: seriousKeywords.length ? seriousKeywords : null }).eq('id', submissionId)
+    const failedFlags = (await Promise.all(perIssue.map((kws, i) => db.from('issues')
+      .update({ is_serious: kws.length > 0, serious_keywords: kws.length ? kws : null })
+      .eq('submission_id', submissionId).eq('issue_index', i)))).filter((r) => r.error)
+    if (failedFlags.length) {
+      await db.from('job_errors').insert({ job: 'serious-check', entity_type: 'submission', entity_id: submissionId, message: `Saving serious flag failed: ${failedFlags[0].error!.message}`.slice(0, 500) })
     }
   } catch (e) {
     await db.from('job_errors').insert({ job: 'serious-check', entity_type: 'submission', entity_id: submissionId, message: (e as Error).message.slice(0, 500) })
@@ -388,8 +441,9 @@ async function notifyAfterSave(db: Db, submissionId: string, issues: ExtractedIs
   if (!issues.length) return
   try {
 
-    if (seriousKeywords.length) await queueSeriousWhatsApp(db, submissionId, seriousKeywords)
-    await db.rpc('enqueue_new_issue_notifications', { p_submission_id: submissionId })
+    if (seriousKeywords.length) await queueSeriousWhatsApp(db, submissionId, seriousKeywords, seriousIdx)
+    const { error: enqErr } = await db.rpc('enqueue_new_issue_notifications', { p_submission_id: submissionId })
+    if (enqErr) throw new Error(`Queueing notifications failed: ${enqErr.message}`)
   } catch (e) {
     await db.from('job_errors').insert({ job: 'notify', entity_type: 'submission', entity_id: submissionId, message: (e as Error).message.slice(0, 500) })
     return
@@ -409,17 +463,27 @@ async function processSubmission(db: Db, submissionId: string, actorId: string |
     .eq('id', submissionId)
     .in('processing_status', ['submitted', 'processing', 'failed', 'needs_review'])
     .or(`locked_at.is.null,locked_at.lt.${staleBefore}`)
-    .select('id, submitted_by, reviewed_transcript, attempt_count, event_match, chosen_calendar_event_id')
+    .select('id, submitted_by, created_at, transcription_meta, reviewed_transcript, attempt_count, event_match, chosen_calendar_event_id, extraction, processing_error')
     .maybeSingle()
   if (!claimed) return { claimed: false }
 
   const attempt = (claimed.attempt_count ?? 0) + 1
+  if (!actorId && attempt > MAX_ATTEMPTS + 2) {
+    await db.from('submissions').update({ processing_status: 'failed', processing_error: 'Stopped after too many tries. Ask an admin to retry.',
+      next_attempt_at: null, locked_at: null }).eq('id', submissionId)
+    return { claimed: true, status: 'failed', error: 'Too many tries', will_retry: false }
+  }
+  await db.from('submissions').update({ attempt_count: attempt }).eq('id', submissionId)
+  const metaAt = (claimed.transcription_meta as { recorded_at?: string } | null)?.recorded_at
+  const createdMs = Date.parse(claimed.created_at as string)
+  const recordedAt = metaAt && !Number.isNaN(Date.parse(metaAt)) && Date.parse(metaAt) <= createdMs + 60_000
+    && Date.parse(metaAt) >= createdMs - 7 * 86_400_000 ? metaAt : claimed.created_at as string
   try {
 
     const menu = await loadDishes(db)
     const said = findDishes(claimed.reviewed_transcript, menu)
     const [matched, { data: cats }, { data: venueRows }] = await Promise.all([
-      matchEvent(said.stripped || claimed.reviewed_transcript),
+      matchEvent(said.stripped || claimed.reviewed_transcript, null, recordedAt),
       db.from('issue_categories').select('id, name, description').eq('is_active', true).order('sort_order'),
       db.from('venues').select('id, venue_name, aliases:venue_aliases(alias)').eq('is_active', true),
     ])
@@ -442,7 +506,7 @@ async function processSubmission(db: Db, submissionId: string, actorId: string |
     const names = categories.map((c) => c.name)
 
     if (!GEMINI_KEY) throw new AiError('GEMINI_API_KEY secret is missing', false)
-    const guestNames = [ev?.guest_name, ...(((match.candidates as { guest_name?: string }[]) ?? []).map((c) => c.guest_name))]
+    const guestNames = [ev?.guest_name]
     const payload = JSON.stringify({
       categories: categories.map((c) => ({ name: c.name, covers: c.description })),
       event_context: ev ? {
@@ -451,7 +515,11 @@ async function processSubmission(db: Db, submissionId: string, actorId: string |
       menu_dishes_mentioned: said.dishes.slice(0, 15).map((d) => ({ name: d.name, section: d.section })),
       transcript: redact(claimed.reviewed_transcript, guestNames),
     })
-    const { issues, model: usedModel } = await callGeminiWithRetry(db, payload, names, submissionId, actorId ?? claimed.submitted_by)
+    const earlier = claimed.extraction as { model?: string; issues?: ExtractedIssue[]; compliments?: Compliment[] } | null
+    const reuse = !actorId && String(claimed.processing_error ?? '').startsWith(CALENDAR_DOWN) && Array.isArray(earlier?.issues)
+    const { issues, compliments, model: usedModel } = reuse
+      ? { issues: earlier!.issues!, compliments: earlier!.compliments ?? [], model: earlier!.model ?? 'previous' }
+      : await callGeminiWithRetry(db, payload, names, submissionId, actorId ?? claimed.submitted_by)
 
     const venues = (venueRows ?? []) as VenueRow[]
     const venueName = new Map(venues.map((v) => [v.id, v.venue_name]))
@@ -470,7 +538,7 @@ async function processSubmission(db: Db, submissionId: string, actorId: string |
           return { venue_id: place ?? mainVenueId, event: ev, match_status: String(match.status ?? 'unknown') }
         }
 
-        const m = await matchEvent((venueSaid ?? '') + ' ' + findDishes(it.original_text, menu).stripped, mainDate)
+        const m = await matchEvent((venueSaid ?? '') + ' ' + findDishes(it.original_text, menu).stripped, mainDate, recordedAt)
         const e = (m?.status === 'matched' ? m.event : null) as Record<string, unknown> | null
         return { venue_id: place, event: e, match_status: String(m?.status ?? 'unknown') }
       }))
@@ -493,16 +561,34 @@ async function processSubmission(db: Db, submissionId: string, actorId: string |
         original_text: it.original_text,
         ai_summary: it.summary,
         summary_status: 'done',
-      })), { onConflict: 'submission_id,issue_index', ignoreDuplicates: true })
+      })), { onConflict: 'submission_id,issue_index' })
       if (insErr) throw new Error(`Saving issues failed: ${insErr.message}`)
     }
 
-    const status = issues.length ? 'pending_assignment' : 'needs_review'
+    await db.from('compliments').delete().eq('submission_id', submissionId)
+    if (compliments.length) {
+      const { error: cErr } = await db.from('compliments').insert(compliments.map((c) => ({
+        submission_id: submissionId,
+        item: c.item,
+        venue_id: resolveVenue(isDishWord(c.venue_mentioned, said.words) ? null : c.venue_mentioned, venues) ?? mainVenueId,
+        event_day: mainDate ?? new Date(new Date(recordedAt).getTime() + 5.5 * 3600_000).toISOString().slice(0, 10),
+        summary: c.summary,
+        original_text: c.original_text,
+      })))
+      if (cErr) console.error('saving compliments failed', cErr)
+    }
+
+    await db.from('issues').delete().eq('submission_id', submissionId).gte('issue_index', issues.length)
+
+    const found = issues.length > 0 || compliments.length > 0
+    const calendarDown = match.status === 'calendar_error' && attempt < MAX_ATTEMPTS
+    const status = calendarDown ? 'failed' : found ? 'pending_assignment' : 'needs_review'
     const { error: upErr } = await db.from('submissions').update({
       processing_status: status,
-      processing_error: issues.length ? null : 'No clear issue found in the transcript',
+      processing_error: calendarDown ? `${CALENDAR_DOWN} The event will be matched again shortly.`
+        : found ? null : 'No clear issue found in the transcript',
       attempt_count: attempt,
-      next_attempt_at: null,
+      next_attempt_at: calendarDown ? new Date(Date.now() + Math.min(60, 2 ** attempt) * 60_000).toISOString() : null,
       locked_at: null,
       event_match: match,
       event_date: (ev?.date as string) ?? (match.date as string | null) ?? null,
@@ -510,7 +596,7 @@ async function processSubmission(db: Db, submissionId: string, actorId: string |
       calendar_event_id: (ev?.calendar_event_id as string) ?? null,
       guest_name: (ev?.guest_name as string) ?? null,
       function_name: (ev?.function_name as string) ?? null,
-      extraction: { model: usedModel, issues, processed_at: new Date().toISOString() },
+      extraction: { model: usedModel, issues, compliments, processed_at: new Date().toISOString() },
 
       issue_data: {
         event_date: (ev?.date as string) ?? (match.date as string | null) ?? null,
@@ -560,7 +646,7 @@ async function releaseStuck(db: Db, channel: string) {
     .eq('channel', channel).eq('status', 'processing').lt('locked_at', stale)
 }
 
-async function sendPendingPushes(db: Db, limit = 100) {
+async function sendPendingPushes(db: Db, limit = 100, deadline = Infinity) {
   if (!PUSH_READY) return { skipped: 'VAPID keys not set' }
   const now = new Date().toISOString()
   await releaseStuck(db, 'push')
@@ -575,6 +661,11 @@ async function sendPendingPushes(db: Db, limit = 100) {
     .select('id, recipient_user_id, payload, retry_count, max_retries')
   let sent = 0, failed = 0, removed = 0
   for (const job of jobs ?? []) {
+    if (Date.now() > deadline) {
+      const left = (jobs ?? []).slice((jobs ?? []).indexOf(job)).map((j) => j.id)
+      if (left.length) await db.from('notification_queue').update({ status: 'pending', locked_at: null }).in('id', left)
+      break
+    }
     const { data: subs } = await db.from('push_subscriptions').select('id, endpoint, p256dh, auth').eq('user_id', job.recipient_user_id)
     if (!subs?.length) {
       await db.from('notification_queue').update({ status: 'sent', processed_at: now, last_error: 'no devices', locked_at: null }).eq('id', job.id)
@@ -615,30 +706,31 @@ async function sendPendingPushes(db: Db, limit = 100) {
 
 const padNorm = (t: string) => ' ' + t.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ').trim() + ' '
 
-async function findSeriousKeywords(db: Db, texts: (string | null | undefined)[]): Promise<string[]> {
-  if (!texts.some(Boolean)) return []
-  const [{ data }, { data: venues }] = await Promise.all([
+async function loadSeriousMatcher(db: Db): Promise<(texts: (string | null | undefined)[]) => string[]> {
+  const [{ data, error }, { data: venues }] = await Promise.all([
     db.from('alert_keywords').select('keyword, keyword_normalized'),
     db.from('venues').select('venue_name, sub_venues, aliases:venue_aliases(alias)'),
   ])
-  if (!data?.length) return []
+  if (error) throw new Error(`Loading serious keywords failed: ${error.message}`)
   const places = (venues ?? []).flatMap((v) => [v.venue_name as string, ...((v.sub_venues as string[] | null) ?? []),
     ...((v.aliases as { alias: string }[] | null) ?? []).map((a) => a.alias)])
     .map((p) => padNorm(p ?? '').trim()).filter((p) => p.includes(' ')).sort((a, b) => b.length - a.length)
-  let hay = padNorm(texts.filter(Boolean).join(' \n '))
-  for (const p of places) hay = hay.split(' ' + p + ' ').join(' ')
-  return data.filter((k) => {
-    const kw = padNorm(k.keyword_normalized as string).trim()
-    return kw && hay.includes(' ' + kw + ' ')
-  }).map((k) => k.keyword as string)
+  const keywords = (data ?? []).map((k) => ({ keyword: k.keyword as string, kw: padNorm(k.keyword_normalized as string).trim() }))
+  return (texts) => {
+    if (!keywords.length || !texts.some(Boolean)) return []
+    let hay = padNorm(texts.filter(Boolean).join(' \n '))
+    for (const p of places) hay = hay.split(' ' + p + ' ').join(' ')
+    return keywords.filter((k) => k.kw && hay.includes(' ' + k.kw + ' ')).map((k) => k.keyword)
+  }
 }
 
 function waNumber(raw: string | null | undefined): string | null {
-  const d = String(raw ?? '').replace(/\D/g, '')
-  if (d.length === 10 && /^[6-9]/.test(d)) return '91' + d
-  if (d.length === 12 && d.startsWith('91')) return d
-  if (d.length === 11 && d.startsWith('0')) return '91' + d.slice(1)
-  return null
+  let d = String(raw ?? '').replace(/\D/g, '')
+  if (d.startsWith('00')) d = d.slice(2)
+  if (d.length === 13 && d.startsWith('910')) d = '91' + d.slice(3)
+  if (d.length === 11 && d.startsWith('0')) d = d.slice(1)
+  if (d.length === 12 && d.startsWith('91')) d = d.slice(2)
+  return d.length === 10 && /^[6-9]/.test(d) ? '91' + d : null
 }
 
 async function whapiSend(to: string, body: string): Promise<{ ok: boolean; error?: string }> {
@@ -648,6 +740,7 @@ async function whapiSend(to: string, body: string): Promise<{ ok: boolean; error
       method: 'POST',
       headers: { Authorization: `Bearer ${WHAPI_TOKEN}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ to: to.includes('@') ? to : to + '@s.whatsapp.net', body }),
+      signal: AbortSignal.timeout(15_000),
     })
     if (res.ok) return { ok: true }
     return { ok: false, error: `Whapi ${res.status}: ${(await res.text()).slice(0, 200)}` }
@@ -656,14 +749,14 @@ async function whapiSend(to: string, body: string): Promise<{ ok: boolean; error
   }
 }
 
-async function queueSeriousWhatsApp(db: Db, submissionId: string, keywords: string[]) {
+async function queueSeriousWhatsApp(db: Db, submissionId: string, keywords: string[], seriousIdx: number[]) {
   const { data: sub } = await db.from('submissions')
-    .select('id, submitted_by, created_at, guest_name, function_name, venue:venues(venue_name), recorder:app_users!submissions_submitted_by_fkey(name)')
+    .select('id, submitted_by, created_at, guest_name, function_name, venue:venues(venue_name), recorder:app_users!submissions_submitted_by_fkey(name, mobile_number)')
     .eq('id', submissionId).maybeSingle()
   if (!sub) return 0
   const { data: issues } = await db.from('issues')
     .select('issue_index, category_raw, item, ai_summary, venue:venues(venue_name)')
-    .eq('submission_id', submissionId).order('issue_index')
+    .eq('submission_id', submissionId).in('issue_index', seriousIdx).order('issue_index')
 
   const venueNames = [...new Set([(sub.venue as { venue_name?: string } | null)?.venue_name,
     ...(issues ?? []).map((i) => (i.venue as { venue_name?: string } | null)?.venue_name)].filter(Boolean))]
@@ -676,6 +769,7 @@ async function queueSeriousWhatsApp(db: Db, submissionId: string, keywords: stri
     ...(issues ?? []).map((i, n) => `${n + 1}. *${i.category_raw ?? 'Other'}*${i.item ? ' · ' + i.item : ''}: ${i.ai_summary ?? ''}`),
     '',
     `Recorded by ${((sub.recorder as { name?: string } | null)?.name ?? '').replace(/\./g, ' ').replace(/\s+/g, ' ').trim() || 'staff'} · ${when}`,
+    waNumber((sub.recorder as { mobile_number?: string } | null)?.mobile_number) ? `Call recorder: +${waNumber((sub.recorder as { mobile_number?: string } | null)?.mobile_number)}` : null,
     APP_URL ? `Open: ${APP_URL}issues` : null,
   ].filter((l) => l !== null) as string[]
   const body = lines.join('\n')
@@ -695,7 +789,7 @@ async function queueSeriousWhatsApp(db: Db, submissionId: string, keywords: stri
   return queued
 }
 
-async function sendPendingWhatsApp(db: Db, limit = 50) {
+async function sendPendingWhatsApp(db: Db, limit = 50, deadline = Infinity) {
   if (!WHAPI_TOKEN) return { skipped: 'WHAPI_API_TOKEN not set' }
   const now = new Date().toISOString()
   await releaseStuck(db, 'whatsapp')
@@ -709,6 +803,11 @@ async function sendPendingWhatsApp(db: Db, limit = 50) {
     .select('id, payload, retry_count, max_retries')
   let sent = 0, failed = 0
   for (const job of jobs ?? []) {
+    if (Date.now() > deadline) {
+      const left = (jobs ?? []).slice((jobs ?? []).indexOf(job)).map((j) => j.id)
+      if (left.length) await db.from('notification_queue').update({ status: 'pending', locked_at: null }).in('id', left)
+      break
+    }
     const { to, body } = job.payload as { to: string; body: string }
     const r = await whapiSend(to, body)
     if (r.ok) {
@@ -717,10 +816,15 @@ async function sendPendingWhatsApp(db: Db, limit = 50) {
     } else {
       failed++
       const retry = (job.retry_count ?? 0) + 1
+      const outage = /Whapi (402|429|5\d\d)|unreachable/.test(r.error ?? '')
+      const giveUp = outage ? retry >= 48 : retry >= (job.max_retries ?? 5)
+      if (outage && retry === 1) {
+        await db.from('job_errors').insert({ job: 'whatsapp', entity_type: 'notification', entity_id: job.id, message: (r.error ?? '').slice(0, 500) })
+      }
       await db.from('notification_queue').update({
         status: 'failed', retry_count: retry, locked_at: null, last_error: r.error?.slice(0, 500),
-        next_attempt_at: retry >= (job.max_retries ?? 5) ? '9999-12-31T00:00:00Z'
-          : new Date(Date.now() + Math.min(30, 2 ** retry) * 60_000).toISOString(),
+        next_attempt_at: giveUp ? '9999-12-31T00:00:00Z'
+          : new Date(Date.now() + (outage ? 30 : Math.min(30, 2 ** retry)) * 60_000).toISOString(),
       }).eq('id', job.id)
     }
     await new Promise((res) => setTimeout(res, 1000))
@@ -758,8 +862,8 @@ async function runCron(db: Db) {
       stats.audio_deleted = expired.length
     }
 
-    stats.push = await sendPendingPushes(db, 200)
-    stats.whatsapp = await sendPendingWhatsApp(db, 50)
+    stats.push = await sendPendingPushes(db, 100, started + CRON_TIME_BUDGET_MS + 15_000)
+    stats.whatsapp = await sendPendingWhatsApp(db, 30, started + CRON_TIME_BUDGET_MS + 25_000)
 
     const { data: cleaned } = await db.rpc('maintenance_cleanup')
     stats.cleanup = cleaned ?? null
@@ -822,7 +926,7 @@ Deno.serve(async (req) => {
     if (!transcript) return reply(origin, 400, { error: 'The transcript is empty.' })
     if (transcript.length > 5000) return reply(origin, 400, { error: 'The transcript is too long.' })
     const audioPath = body.audio_path ? String(body.audio_path) : null
-    if (audioPath && !audioPath.startsWith(`${me.id}/`)) return reply(origin, 400, { error: 'Invalid audio path.' })
+    if (audioPath && !new RegExp(`^${me.id}/${clientId}\\.(webm|m4a|ogg|wav)$`).test(audioPath)) return reply(origin, 400, { error: 'Invalid audio path.' })
 
     const since = new Date(Date.now() - DUP_WINDOW_HOURS * 3600_000).toISOString()
     const [{ data: existing }, { data: recent }, { data: retention }] = await Promise.all([
@@ -898,8 +1002,39 @@ Deno.serve(async (req) => {
     if (!me.roles.some((r) => r === 'admin' || r === 'system')) return reply(origin, 403, { error: 'Only an admin can retry.' })
     const id = String(body.submission_id ?? '')
     if (!UUID_RE.test(id)) return reply(origin, 400, { error: 'Invalid submission id.' })
+    await db.from('submissions').update({ attempt_count: 0 }).eq('id', id)
     const result = await processSubmission(db, id, me.id)
     return reply(origin, 200, result)
+  }
+
+  if (body.action === 'delete_issue' || body.action === 'delete_submission') {
+    if (!me.roles.includes('admin')) return reply(origin, 403, { error: 'Only an admin can delete.' })
+    let submissionId = String(body.submission_id ?? '')
+    if (body.action === 'delete_issue') {
+      const issueId = String(body.issue_id ?? '')
+      if (!UUID_RE.test(issueId)) return reply(origin, 400, { error: 'Invalid issue id.' })
+      const { data: row } = await db.from('issues').select('submission_id').eq('id', issueId).maybeSingle()
+      if (!row) return reply(origin, 404, { error: 'This issue no longer exists.' })
+      submissionId = row.submission_id as string
+      const { error: delErr } = await db.from('issues').delete().eq('id', issueId)
+      if (delErr) return reply(origin, 500, { error: 'Could not delete the issue.' })
+      const { count } = await db.from('issues').select('id', { count: 'exact', head: true }).eq('submission_id', submissionId)
+      if ((count ?? 0) > 0) return reply(origin, 200, { ok: true, deleted: 'issue' })
+      const { count: praise } = await db.from('compliments').select('id', { count: 'exact', head: true }).eq('submission_id', submissionId)
+      if ((praise ?? 0) > 0) return reply(origin, 200, { ok: true, deleted: 'issue' })
+    }
+    if (!UUID_RE.test(submissionId)) return reply(origin, 400, { error: 'Invalid submission id.' })
+    const { data: sub } = await db.from('submissions').select('id, audio_path, audio_deleted_at').eq('id', submissionId).maybeSingle()
+    if (!sub) return reply(origin, 200, { ok: true, deleted: 'recording' })
+    if (sub.audio_path && !sub.audio_deleted_at) {
+      const { error: rmErr } = await db.storage.from('recordings').remove([sub.audio_path as string])
+      if (rmErr) console.error('audio delete failed', rmErr)
+    }
+    await db.from('notification_queue').delete().like('dedupe_key', `serious:${submissionId}:%`)
+    await db.from('notification_queue').delete().like('dedupe_key', `new_issues:${submissionId}:%`)
+    const { error: subErr } = await db.from('submissions').delete().eq('id', submissionId)
+    if (subErr) return reply(origin, 500, { error: 'Could not delete the recording.' })
+    return reply(origin, 200, { ok: true, deleted: 'recording' })
   }
 
   return reply(origin, 400, { error: 'Unknown action.' })

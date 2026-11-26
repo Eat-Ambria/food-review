@@ -30,6 +30,18 @@ export interface FeedIssue {
   recorded_by: string | null
   is_serious: boolean
   serious_keywords: string[] | null
+  recorded_by_mobile?: string | null
+}
+
+export interface Compliment {
+  id: string; submission_id: string; created_at: string; event_day: string; item: string | null; summary: string
+  original_text: string | null; venue_id: string | null; venue_name: string | null; recorded_by: string | null
+}
+
+export async function fetchCompliments(from: string, to: string): Promise<Compliment[]> {
+  const { data, error } = await supabase.rpc('compliments_feed', { p_from: from, p_to: to })
+  if (error) return []
+  return (data ?? []) as Compliment[]
 }
 
 export async function fetchIssues(opts: { from: string; to: string; venueId?: string | null; category?: string | null }): Promise<FeedIssue[]> {
@@ -120,6 +132,20 @@ export async function lastCronRun(): Promise<JobRun | null> {
   return (data as JobRun | null) ?? null
 }
 
+async function adminDelete(body: Record<string, string>): Promise<'issue' | 'recording'> {
+  const { data, error } = await supabase.functions.invoke('process-issue', { body })
+  if (error) {
+    let message = 'Could not delete.'
+    if (error instanceof FunctionsHttpError) {
+      try { message = (await error.context.json())?.error ?? message } catch { }
+    }
+    throw new Error(message)
+  }
+  return data?.deleted === 'issue' ? 'issue' : 'recording'
+}
+export const deleteIssue = (issueId: string) => adminDelete({ action: 'delete_issue', issue_id: issueId })
+export const deleteRecording = (submissionId: string) => adminDelete({ action: 'delete_submission', submission_id: submissionId })
+
 export async function retryProcessing(submissionId: string): Promise<void> {
   const { data, error } = await supabase.functions.invoke('process-issue', { body: { action: 'retry', submission_id: submissionId } })
   if (error) {
@@ -130,12 +156,4 @@ export async function retryProcessing(submissionId: string): Promise<void> {
     throw new Error(message)
   }
   if (data?.status === 'failed') throw new Error(data?.error ?? 'Processing failed again.')
-}
-
-export async function chooseEvent(submissionId: string, calendarEventId: string): Promise<void> {
-  const { data, error } = await supabase.rpc('admin_set_submission_event', {
-    p_submission_id: submissionId, p_calendar_event_id: calendarEventId,
-  })
-  if (error) throw new Error('Could not save. ' + error.message)
-  if (!data?.ok) throw new Error(data?.error ?? 'Could not save.')
 }

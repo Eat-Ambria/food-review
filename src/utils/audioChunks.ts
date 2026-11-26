@@ -65,8 +65,11 @@ export function rms(samples: Float32Array): number {
   return Math.sqrt(s / Math.max(1, samples.length))
 }
 
+const MAX_TOTAL_SEC = 125
+
 export async function toWavChunks(blob: Blob): Promise<{ chunks: WavChunk[]; totalSec: number; silent: boolean }> {
-  const samples = await decodeTo16kMono(blob)
+  const decoded = await decodeTo16kMono(blob)
+  const samples = decoded.length > MAX_TOTAL_SEC * SAMPLE_RATE ? decoded.subarray(0, MAX_TOTAL_SEC * SAMPLE_RATE) : decoded
   const max = MAX_CHUNK_SEC * SAMPLE_RATE
   const chunks: WavChunk[] = []
   let pos = 0

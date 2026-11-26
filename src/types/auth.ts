@@ -41,8 +41,8 @@ export interface AppUser {
   last_login_at: string | null
 }
 
-export type LoginFailReason = 'invalid' | 'locked' | 'inactive' | 'rate_limited' | 'network' | 'unknown'
+export type LoginFailReason = 'invalid' | 'locked' | 'inactive' | 'rate_limited' | 'slow_down' | 'network' | 'unknown'
 
 export type LoginResult =
-  | { ok: true }
-  | { ok: false; reason: LoginFailReason; message: string; attemptsLeft?: number }
+  | { ok: true; username?: string }
+  | { ok: false; reason: LoginFailReason; message: string }

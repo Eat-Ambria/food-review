@@ -126,12 +126,27 @@ Deno.serve(async (req) => {
     return reply(origin, 400, { error: `Send at most ${MAX_ROWS_PER_REQUEST} users per request.` })
   }
 
+  const letters = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const firstName = (s: string) => letters(String(s ?? '').trim().split(/[\s.]+/)[0] ?? '')
+  const { data: everyone } = await admin.from('app_users').select('name, username, is_active')
+  const clashOf = (username: string): string | null => {
+    const key = letters(username)
+    for (const u of everyone ?? []) {
+      if (u.username === username) continue
+      if (letters(u.username as string) === key) return `Too close to the existing username "${u.username}"`
+      if (u.is_active && firstName(u.name as string) === key) return `"${username}" is how ${u.name} signs in. Choose a longer username`
+    }
+    return null
+  }
+
   const results: RowResult[] = []
   for (const r of rows) {
     const problem = validate(r)
     if (problem) { results.push({ index: r.index, ok: false, error: problem }); continue }
 
-    const username = r.username.trim().toLowerCase()
+    const username = String(r.username).trim().toLowerCase()
+    const clash = clashOf(username)
+    if (clash) { results.push({ index: r.index, ok: false, error: clash }); continue }
 
     const { data: taken } = await admin.from('app_users').select('id').eq('username', username).maybeSingle()
     if (taken) { results.push({ index: r.index, ok: false, error: `Username "${username}" already exists` }); continue }
@@ -149,7 +164,7 @@ Deno.serve(async (req) => {
 
     const { error: dbErr } = await admin.rpc('auth_create_app_user', {
       p_id: created.user.id,
-      p_name: r.name.trim(),
+      p_name: String(r.name).trim(),
       p_username: username,
       p_role: primaryRole(rolesOf(r)),
       p_roles: rolesOf(r),
@@ -160,7 +175,7 @@ Deno.serve(async (req) => {
     if (dbErr) {
 
       await admin.auth.admin.deleteUser(created.user.id).catch((e) => console.error('rollback failed', e))
-      const msg = dbErr.code === '23505' ? `Username "${username}" already exists` : 'Could not save the user'
+      const msg = dbErr.code === '23505' ? (/too close/i.test(dbErr.message) ? dbErr.message : `Username "${username}" already exists`) : 'Could not save the user'
       if (dbErr.code !== '23505') console.error('auth_create_app_user failed', dbErr)
       results.push({ index: r.index, ok: false, error: msg })
       continue

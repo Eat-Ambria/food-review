@@ -62,6 +62,7 @@ export async function submitRecording(input: {
   transcriptionMeta: Record<string, unknown> | undefined
   allowDuplicate?: boolean
   chosenCalendarEventId?: string | null
+  recordedAt?: string
 }): Promise<SubmitResult> {
 
   const audioPath = audioPathFor(input.userId, input.clientSubmissionId, input.mimeType)
@@ -74,7 +75,7 @@ export async function submitRecording(input: {
       client_submission_id: input.clientSubmissionId,
       reviewed_transcript: input.reviewedTranscript,
       raw_transcript: input.rawTranscript,
-      transcription_meta: input.transcriptionMeta ?? {},
+      transcription_meta: { ...(input.transcriptionMeta ?? {}), ...(input.recordedAt ? { recorded_at: input.recordedAt } : {}) },
       audio_path: audioPath,
       audio_mime: input.mimeType.split(';')[0],
       audio_duration_sec: Math.round(input.durationSec * 10) / 10,

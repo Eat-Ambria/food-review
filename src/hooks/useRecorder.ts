@@ -22,7 +22,11 @@ function pickMimeType(): string | undefined {
 
 export interface Recording { blob: Blob; mimeType: string; durationSec: number }
 
-export function useRecorder(maxSeconds: number) {
+export function useRecorder(maxSeconds: number, onLeftBehind?: (r: Recording) => void) {
+  const leftBehindRef = useRef(onLeftBehind)
+  leftBehindRef.current = onLeftBehind
+  const mountedRef = useRef(true)
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const [status, setStatus] = useState<RecorderStatus>('idle')
   const [error, setError] = useState<RecorderError | null>(null)
   const [elapsed, setElapsed] = useState(0)
@@ -61,6 +65,7 @@ export function useRecorder(maxSeconds: number) {
       stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       })
+      if (!mountedRef.current) { stream.getTracks().forEach((t) => t.stop()); return }
     } catch (e) {
       const name = (e as DOMException)?.name
       setError(name === 'NotAllowedError' || name === 'SecurityError' ? 'denied'
@@ -84,6 +89,7 @@ export function useRecorder(maxSeconds: number) {
 
     rec.ondataavailable = (ev) => { if (ev.data && ev.data.size > 0) chunksRef.current.push(ev.data) }
     rec.onstop = () => {
+      clearTimeout(stopTimerRef.current)
       const durationSec = Math.min((performance.now() - startedAtRef.current) / 1000, maxSeconds)
       const type = rec.mimeType || mimeType || 'audio/webm'
       const blob = new Blob(chunksRef.current, { type })
@@ -130,6 +136,8 @@ export function useRecorder(maxSeconds: number) {
     setElapsed(0)
     setRecording(null)
     rec.start(1000)
+    clearTimeout(stopTimerRef.current)
+    stopTimerRef.current = setTimeout(() => stop(), maxSeconds * 1000 + 250)
     setStatus('recording')
   }, [cleanup, maxSeconds, stop])
 
@@ -146,11 +154,24 @@ export function useRecorder(maxSeconds: number) {
     setStatus('stopped')
   }, [])
 
-  useEffect(() => () => {
-    const rec = recorderRef.current
-    if (rec && rec.state !== 'inactive') { rec.onstop = null; rec.stop() }
-    cleanup()
-  }, [cleanup])
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      clearTimeout(stopTimerRef.current)
+      const rec = recorderRef.current
+      if (rec && rec.state !== 'inactive') {
+        const started = startedAtRef.current
+        rec.onstop = () => {
+          const type = rec.mimeType || 'audio/webm'
+          const blob = new Blob(chunksRef.current, { type })
+          if (blob.size > 0) leftBehindRef.current?.({ blob, mimeType: type, durationSec: Math.min((performance.now() - started) / 1000, maxSeconds) })
+        }
+        rec.stop()
+      }
+      cleanup()
+    }
+  }, [cleanup, maxSeconds])
 
   return { status, error, elapsed, level, recording, start, stop, discard, restore }
 }

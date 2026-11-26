@@ -111,7 +111,7 @@ export function UserFormModal({ open, user, existingUsernames, onClose, onSaved 
         </div>
         {user && (
           <ChoiceRow checked={active} onChange={setActive} title="Active"
-            description="Inactive users cannot sign in, and are signed out right away." />
+            description="Inactive users cannot sign in, and lose access to all data straight away." />
         )}
         {error && <Alert tone="danger">{error}</Alert>}
       </form>

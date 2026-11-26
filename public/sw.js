@@ -1,20 +1,60 @@
-// Service worker: shows phone notifications (even when the app is closed) and caches the app so it opens fast.
-const SHELL = 'issue-desk-shell-v2'
-const ASSETS = 'issue-desk-assets-v2'
+// Service worker: shows phone notifications (even when the app is closed) and keeps the app on the phone so it opens without internet.
+const SHELL = 'issue-desk-shell-v3'
+const ASSETS = 'issue-desk-assets-v3'
 const MAX_ASSETS = 80
-
-self.addEventListener('install', () => self.skipWaiting())
-self.addEventListener('activate', (event) => event.waitUntil((async () => {
-
-  for (const key of await caches.keys()) if (![SHELL, ASSETS].includes(key)) await caches.delete(key)
-  await self.clients.claim()
-})()))
+const NAV_TIMEOUT_MS = 3500
 
 async function trim(cacheName, max) {
   const cache = await caches.open(cacheName)
   const keys = await cache.keys()
   for (let i = 0; i < keys.length - max; i++) await cache.delete(keys[i])
 }
+
+async function keepAssetsOf(html) {
+  const cache = await caches.open(ASSETS)
+  const links = [...html.matchAll(/(?:src|href)="([^"]*\/assets\/[^"]+)"/g)].map((m) => new URL(m[1], self.registration.scope).href)
+  if (!links.length) return
+  await Promise.all(links.map(async (url) => {
+    if (await cache.match(url)) return
+    try { const res = await fetch(url); if (res.ok) await cache.put(url, res) } catch { }
+  }))
+  const keep = new Set(links)
+  const lazy = (await cache.keys()).filter((req) => !keep.has(req.url))
+  for (const req of lazy.slice(0, Math.max(0, lazy.length - (MAX_ASSETS - keep.size)))) await cache.delete(req)
+}
+
+async function saveShell(res) {
+  const forCache = res.clone()
+  const html = await res.clone().text()
+  await (await caches.open(SHELL)).put('shell', forCache)
+  await keepAssetsOf(html)
+}
+
+self.addEventListener('install', (event) => event.waitUntil((async () => {
+  let saved = false
+  try {
+    const res = await fetch(self.registration.scope, { cache: 'no-store', credentials: 'same-origin' })
+    if (res.ok) { await saveShell(res); saved = true }
+  } catch { }
+  if (!saved) {
+    for (const key of await caches.keys()) {
+      if (key === SHELL || !key.startsWith('issue-desk-shell-')) continue
+      const old = await (await caches.open(key)).match('shell')
+      if (!old) continue
+      await (await caches.open(SHELL)).put('shell', old.clone())
+      const assets = await caches.open(ASSETS)
+      const links = [...(await old.text()).matchAll(/(?:src|href)="([^"]*\/assets\/[^"]+)"/g)].map((m) => new URL(m[1], self.registration.scope).href)
+      for (const url of links) { const hit = await caches.match(url); if (hit) await assets.put(url, hit) }
+      break
+    }
+  }
+  await self.skipWaiting()
+})()))
+
+self.addEventListener('activate', (event) => event.waitUntil((async () => {
+  for (const key of await caches.keys()) if (![SHELL, ASSETS].includes(key)) await caches.delete(key)
+  await self.clients.claim()
+})()))
 
 self.addEventListener('fetch', (event) => {
   const req = event.request
@@ -24,13 +64,20 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.endsWith('/version.json')) return
 
   if (req.mode === 'navigate') {
+    const network = fetch(req.url, { cache: 'no-store', credentials: 'same-origin' })
+    event.waitUntil(network.then((res) => (res.ok ? saveShell(res.clone()) : null)).catch(() => { }))
     event.respondWith((async () => {
+      const cached = () => caches.open(SHELL).then((c) => c.match('shell'))
       try {
-        const res = await fetch(req.url, { cache: 'no-store', credentials: 'same-origin' })
-        if (res.ok) (await caches.open(SHELL)).put('shell', res.clone())
-        return res
+        return await Promise.race([
+          network,
+          new Promise((resolve, reject) => setTimeout(async () => {
+            const hit = await cached()
+            if (hit) resolve(hit); else reject(new Error('slow'))
+          }, NAV_TIMEOUT_MS)),
+        ])
       } catch {
-        return (await caches.open(SHELL)).match('shell') || Response.error()
+        try { return await network } catch { return (await cached()) || Response.error() }
       }
     })())
     return

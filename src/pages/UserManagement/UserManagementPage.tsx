@@ -23,7 +23,6 @@ function fmtDate(iso: string | null): string {
   return new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
 }
 
-const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('')
 
 const ROLE_ORDER: Role[] = ['admin', 'recorder', 'poc']
 const ROLE_TONE: Record<Role, string> = {
@@ -39,16 +38,6 @@ function RoleChips({ u }: { u: ManagedUser }) {
         <span key={r} className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${ROLE_TONE[r]}`}>{ROLE_LABEL[r]}</span>
       ))}
     </div>
-  )
-}
-
-function Avatar({ u, size = 'md' }: { u: ManagedUser; size?: 'md' | 'lg' }) {
-  return (
-    <span className={`flex shrink-0 items-center justify-center rounded-full font-bold
-      ${size === 'lg' ? 'size-11 text-sm' : 'size-9 text-xs'}
-      ${u.is_active ? 'bg-[#fbecc7] text-ink ring-1 ring-marigold/25' : 'bg-ink/[0.05] text-faint'}`}>
-      {initials(u.name)}
-    </span>
   )
 }
 
@@ -236,8 +225,7 @@ export function UserManagementPage() {
                   {filtered.map((u) => (
                     <tr key={u.id} className={`group transition-colors hover:bg-subtle/70 ${u.is_active ? '' : 'text-muted'}`}>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <Avatar u={u} />
+                        <div>
                           <div className="min-w-0">
                             <p className="truncate font-semibold">{personName(u.name)}{u.id === me?.id && <span className="ml-1.5 text-xs font-medium text-muted">(you)</span>}</p>
                             <p className="truncate text-xs text-muted">{u.username}</p>
@@ -256,20 +244,26 @@ export function UserManagementPage() {
 
             <div className="@container xl:hidden"><div className="grid gap-3 @3xl:grid-cols-2">
               {filtered.map((u) => (
-                <Card key={u.id} className={`overflow-hidden ${u.is_active ? '' : 'opacity-75'}`}>
-                  <div className="flex items-start gap-3 p-4 pb-3">
-                    <Avatar u={u} size="lg" />
+                <Card key={u.id} className={`flex flex-col overflow-hidden ${u.is_active ? '' : 'opacity-75'}`}>
+                  <div className="flex flex-1 items-start p-4">
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-baseline gap-2">
-                        <p className="min-w-0 truncate text-[15px] font-bold">{personName(u.name)}{u.id === me?.id && <span className="ml-1.5 text-xs font-medium text-muted">(you)</span>}</p>
-                        <p className="shrink-0 truncate text-xs text-muted">@{u.username}</p>
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-1 [&>div]:contents"><RoleChips u={u} /><StatusBadges u={u} /></div>
+                      <p className="truncate text-base font-bold leading-tight">
+                        {personName(u.name)}{u.id === me?.id && <span className="ml-1.5 text-xs font-medium text-muted">(you)</span>}
+                      </p>
+                      <p className="mt-0.5 truncate text-[13px] text-muted">@{u.username}{u.is_active ? '' : ' · Inactive'}</p>
+                      <div className="mt-2.5"><RoleChips u={u} /></div>
+                      {(u.locked_until || u.must_change_pin) && (
+                        <p className={`mt-2 text-xs ${u.locked_until ? 'font-semibold text-danger' : 'text-muted'}`}>
+                          {u.locked_until ? 'Locked after wrong PINs' : 'Still on the default PIN'}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center justify-between gap-2 border-t border-line bg-subtle/60 py-1.5 pl-4 pr-2">
-                    <p className="flex min-w-0 items-center gap-1.5 truncate text-xs text-muted">
-                      <Icon name="clock" className="size-3.5 shrink-0" />{u.last_login_at ? fmtDate(u.last_login_at) : 'Never signed in'}
+                  <div className="flex items-center justify-between gap-2 border-t border-line bg-subtle/60 py-1.5 pl-4 pr-1.5">
+                    <p className="min-w-0 truncate text-xs text-muted" title={u.last_login_at ? `Last sign-in ${fmtDate(u.last_login_at)}` : undefined}>
+                      {u.last_login_at
+                        ? <>Last sign-in <span className="font-semibold text-ink/75">{new Date(u.last_login_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span></>
+                        : 'Never signed in'}
                     </p>
                     {actions(u)}
                   </div>

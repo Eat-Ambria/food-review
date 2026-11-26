@@ -32,6 +32,7 @@ const MESSAGES: Record<string, string> = {
   locked: 'Too many wrong PINs. This account is locked for a while. Ask an admin to unlock it, or try later.',
   inactive: 'This account has been deactivated. Please contact your admin.',
   rate_limited: 'Too many login attempts from this network. Please wait 15 minutes and try again.',
+  slow_down: 'Too many wrong PINs for this username. Wait a few minutes and try again, or ask an admin.',
 }
 
 Deno.serve(async (req) => {
@@ -70,12 +71,14 @@ Deno.serve(async (req) => {
   }
   if (!check?.ok) {
     const reason = String(check?.reason ?? 'invalid')
-    const status = reason === 'rate_limited' ? 429 : reason === 'invalid' ? 401 : 403
+    if (reason === 'invalid') {
+      const failed = Number(check?.failed ?? 1)
+      await new Promise((r) => setTimeout(r, Math.min(4000, 400 * Math.max(1, failed))))
+    }
+    const status = reason === 'rate_limited' || reason === 'slow_down' ? 429 : reason === 'invalid' ? 401 : 403
     return reply(origin, status, {
       error: MESSAGES[reason] ?? MESSAGES.invalid,
       reason,
-      attempts_left: check?.attempts_left ?? undefined,
-      locked_until: check?.locked_until ?? undefined,
     })
   }
 
@@ -101,6 +104,7 @@ Deno.serve(async (req) => {
     return reply(origin, 200, {
       access_token: verified.session.access_token,
       refresh_token: verified.session.refresh_token,
+      username,
     })
   } catch (e) {
     console.error('session creation failed', e)

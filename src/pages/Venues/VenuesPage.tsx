@@ -42,6 +42,7 @@ export function VenuesPage() {
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [importBusy, setImportBusy] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
+  const [importLoading, setImportLoading] = useState(false)
 
   const [addOpen, setAddOpen] = useState(false)
   const [newName, setNewName] = useState('')
@@ -58,6 +59,7 @@ export function VenuesPage() {
     setImportOpen(true)
     setImportError(null)
     setCategories([])
+    setImportLoading(true)
     try {
       const cats = (await fetchCalendarCategories()).filter((c) => c.is_active)
       setCategories(cats)
@@ -66,6 +68,7 @@ export function VenuesPage() {
     } catch (e) {
       setImportError((e as Error).message)
     }
+    setImportLoading(false)
   }
 
   const runImport = async () => {
@@ -82,22 +85,28 @@ export function VenuesPage() {
     setImportBusy(false)
   }
 
+  const [savingId, setSavingId] = useState<string | null>(null)
   const toggleActive = async (v: Venue) => {
+    if (savingId) return
+    setSavingId(v.id)
     try {
       await saveVenue({ id: v.id, venue_name: v.venue_name, calendar_venue_id: v.calendar_venue_id, sub_venues: v.sub_venues, is_active: !v.is_active })
       await load()
     } catch (e) { showToast((e as Error).message, 'error') }
+    setSavingId(null)
   }
 
   const createVenue = async (e: FormEvent) => {
     e.preventDefault()
-    if (!newName.trim()) return
+    if (!newName.trim() || savingId) return
+    setSavingId('new')
     try {
       await saveVenue({ venue_name: newName, calendar_venue_id: null, sub_venues: [], is_active: true })
       setAddOpen(false)
       setNewName('')
       await load()
     } catch (err) { showToast((err as Error).message, 'error') }
+    setSavingId(null)
   }
 
   return (
@@ -144,7 +153,7 @@ export function VenuesPage() {
                       {!v.is_active && <Badge>Inactive</Badge>}
                     </div>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => void toggleActive(v)}>
+                  <Button variant="ghost" size="sm" loading={savingId === v.id} disabled={Boolean(savingId)} onClick={() => void toggleActive(v)}>
                     {v.is_active ? 'Deactivate' : 'Activate'}
                   </Button>
                 </div>
@@ -189,7 +198,10 @@ export function VenuesPage() {
           <Button loading={importBusy} disabled={!picked.size} onClick={() => void runImport()}>Import {picked.size}</Button>
         </>}>
         {importError && <Alert tone="danger" className="mb-3">{importError}</Alert>}
-        {!importError && categories.length === 0 && (
+        {!importError && !importLoading && categories.length === 0 && (
+          <p className="text-sm text-muted">No active venues were found in the Event Calendar.</p>
+        )}
+        {!importError && importLoading && (
           <div className="space-y-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}</div>
         )}
         <div className="space-y-2">
@@ -205,7 +217,7 @@ export function VenuesPage() {
       <Modal open={addOpen} title="Add venue" onClose={() => setAddOpen(false)}
         footer={<>
           <Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
-          <Button type="submit" form="add-venue">Add venue</Button>
+          <Button type="submit" form="add-venue" loading={savingId === 'new'}>Add venue</Button>
         </>}>
         <form id="add-venue" onSubmit={createVenue} className="space-y-3">
           <TextField label="Venue name" value={newName} onChange={(e) => setNewName(e.target.value)} autoFocus maxLength={80} />

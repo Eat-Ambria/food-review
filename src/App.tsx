@@ -41,7 +41,7 @@ export default function App() {
               <RequireAuth roles={['recorder', 'admin']}>
                 <RecordPage />
               </RequireAuth>} />
-            <Route path="/issues" element={<RequireAuth roles={['poc', 'admin']}><IssuesPage /></RequireAuth>} />
+            <Route path="/issues" element={<RequireAuth roles={['recorder', 'poc', 'admin']}><IssuesPage /></RequireAuth>} />
             <Route path="/my-submissions" element={<RequireAuth roles={['recorder', 'admin']}><MySubmissionsPage /></RequireAuth>} />
             <Route path="/poc" element={<Navigate to="/issues" replace />} />
             <Route path="/admin" element={

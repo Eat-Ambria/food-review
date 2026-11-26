@@ -36,7 +36,12 @@ function mirrored(levels: number[]) {
 export function RecordPage() {
   const { user } = useAuth()
   const userId = user?.id
-  const rec = useRecorder(MAX_SECONDS)
+  const userIdRef = useRef(userId)
+  userIdRef.current = userId
+  const rec = useRecorder(MAX_SECONDS, (r) => {
+    const uid = userIdRef.current
+    if (uid) void addToOutbox({ clientSubmissionId: crypto.randomUUID(), userId: uid, blob: r.blob, mimeType: r.mimeType, durationSec: r.durationSec, createdAt: new Date().toISOString() })
+  })
   const [bars, setBars] = useState<number[]>(() => Array(BARS).fill(0))
   const [toast, showToast, hideToast] = useToast(6000)
   const [justSaved, setJustSaved] = useState(false)
@@ -55,6 +60,11 @@ export function RecordPage() {
     const r = rec.recording
     if (!userId || !r || r === lastHandledRef.current) return
     lastHandledRef.current = r
+    if (r.durationSec < 1) {
+      discard()
+      showToast('Too short. Tap the mic, say the problem, then tap stop.', 'error')
+      return
+    }
     void addToOutbox({
       clientSubmissionId: crypto.randomUUID(),
       userId,
@@ -62,16 +72,23 @@ export function RecordPage() {
       mimeType: r.mimeType,
       durationSec: r.durationSec,
       createdAt: new Date().toISOString(),
+    }).then((onDisk) => {
+      if (!onDisk) showToast('Could not save on this phone. Keep the app open until it is sent.', 'error')
     })
     discard()
     setJustSaved(true)
-  }, [userId, rec.recording, discard])
+  }, [userId, rec.recording, discard, showToast])
+
+  useEffect(() => {
+    if (rec.status !== 'recording') return
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [rec.status])
 
   useEffect(() => onOutboxNotice((n) => {
     if (n.kind === 'changed') return
-    if (n.kind === 'dropped') showToast(`A recording was not sent: ${n.message}`, 'error')
-    else if (n.kind === 'duplicate') showToast('A recording matched one you already sent, so it was not sent again.', 'error')
-    else if (n.result.issues.length > 0 && n.result.issues.every((it) => !it.venue)) {
+    if (n.result.issues.length > 0 && n.result.issues.every((it) => !it.venue)) {
       showToast('Sent, but the venue was not identified. Say the venue name next time.', 'error')
     }
   }), [showToast])

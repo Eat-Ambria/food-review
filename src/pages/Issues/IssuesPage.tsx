@@ -1,7 +1,9 @@
 // Shows all issues to POCs and Admin, grouped by day, venue and function, with filters.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { fetchIssues, listCategories, submissionDays, type FeedIssue } from '../../services/issueService'
+import { useAuth } from '../../contexts/AuthContext'
+import { hasAnyRole } from '../../types/auth'
+import { fetchCompliments, fetchIssues, listCategories, submissionDays, type Compliment, type FeedIssue } from '../../services/issueService'
 import { listVenues } from '../../services/venueService'
 import type { Venue } from '../../types/events'
 import { IssueCard, IssueTableHead } from '../../components/IssueCard'
@@ -14,6 +16,8 @@ import { Button } from '../../components/ui/Button'
 import { Icon } from '../../components/Icon'
 import { SHIFT_ORDER, shiftIcon } from '../../utils/categoryStyle'
 import { dayMonth } from '../../utils/dates'
+import { personName } from '../../utils/personName'
+import { displayItem } from '../../utils/itemName'
 
 type Range = 'today' | 'yesterday' | '7d' | '30d' | 'custom'
 
@@ -97,6 +101,8 @@ function ItemsLine({ items }: { items: ItemCount[] }) {
 }
 
 export function IssuesPage() {
+  const { user } = useAuth()
+  const isAdmin = Boolean(user && hasAnyRole(user, ['admin']))
   const [range, setRange] = useState<Range>('today')
   const [from, setFrom] = useState(istToday())
   const [to, setTo] = useState(istToday())
@@ -106,6 +112,8 @@ export function IssuesPage() {
   const [venues, setVenues] = useState<Venue[]>([])
   const [categories, setCategories] = useState<string[]>([])
   const [rows, setRows] = useState<FeedIssue[]>([])
+  const [praise, setPraise] = useState<Compliment[]>([])
+  const [praiseOpen, setPraiseOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
@@ -139,7 +147,7 @@ export function IssuesPage() {
     let gone = false
     void submissionDays(urlSub).then((d) => {
       if (gone) return
-      if (d) { setRange('custom'); setFrom(d.from); setTo(d.to); setFocusId(urlSub) }
+      if (d) { setRange('custom'); setFrom(d.from); setTo(d.to); setFocusId(urlSub); setVenueId(''); setCategory(''); setQuery('') }
 
       setParams((p) => { p.delete('submission'); return p }, { replace: true })
     }).catch(() => setParams((p) => { p.delete('submission'); return p }, { replace: true }))
@@ -154,29 +162,55 @@ export function IssuesPage() {
   }, [urlQ, setParams])
   const focusedRows = focusId ? rows.filter((r) => r.submission_id === focusId) : []
 
+  const loadSeq = useRef(0)
   const load = useCallback(async (quiet = false) => {
+    if (!from || !to) return
+    const seq = ++loadSeq.current
     if (!quiet) setLoading(true)
     setError(null)
     try {
-      setRows(await fetchIssues({ from, to, venueId: venueId || null, category: category || null }))
+      const [lo, hi] = from <= to ? [from, to] : [to, from]
+      const [issues, good] = await Promise.all([
+        fetchIssues({ from: lo, to: hi, venueId: venueId || null, category: category || null }),
+        fetchCompliments(lo, hi),
+      ])
+      if (seq !== loadSeq.current) return
+      setRows(issues)
+      setPraise(good)
       setUpdatedAt(new Date())
-    } catch (e) { setError((e as Error).message) }
-    if (!quiet) setLoading(false)
+    } catch (e) { if (seq === loadSeq.current) setError((e as Error).message) }
+    if (seq === loadSeq.current) setLoading(false)
   }, [from, to, venueId, category])
 
   useEffect(() => { void load() }, [load])
 
+  const dayRef = useRef(istToday())
   useEffect(() => {
-    const id = setInterval(() => { if (document.visibilityState === 'visible') void load(true) }, 60_000)
-    return () => clearInterval(id)
-  }, [load])
+    const tick = () => {
+      const now = istToday()
+      if (now !== dayRef.current && range !== 'custom') {
+        const back = range === 'yesterday' ? 1 : range === '7d' ? 6 : range === '30d' ? 29 : 0
+        dayRef.current = now
+        setFrom(shift(now, -back))
+        setTo(range === 'yesterday' ? shift(now, -1) : now)
+        return
+      }
+      if (document.visibilityState === 'visible') void load(true)
+    }
+    const id = setInterval(tick, 60_000)
+    const onVisible = () => { if (document.visibilityState === 'visible') tick() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { clearInterval(id); document.removeEventListener('visibilitychange', onVisible) }
+  }, [load, range])
 
+  const searchText = useDeferredValue(query)
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
+    const q = searchText.trim().toLowerCase()
     if (!q) return rows
-    return rows.filter((r) => [r.summary, r.description, r.item, r.guest_name, r.function_name, r.venue_name, r.transcript, r.recorded_by]
+    return rows.filter((r) => [r.summary, r.description, r.item, r.item ? displayItem(r.item) : null, r.guest_name, r.function_name,
+      r.venue_name, r.transcript, r.recorded_by, personName(r.recorded_by), r.category, r.shift, r.sub_venue, r.event_title]
       .some((x) => x?.toLowerCase().includes(q)))
-  }, [rows, query])
+  }, [rows, searchText])
 
   const groups = useMemo(() => group(filtered), [filtered])
   const filtersOn = Boolean(venueId || category || query)
@@ -270,6 +304,43 @@ export function IssuesPage() {
 
       {error && <Alert tone="danger" className="mt-4" action={<Button size="sm" variant="secondary" onClick={() => void load()}>Retry</Button>}>{error}</Alert>}
 
+      {(() => {
+        const q = query.trim().toLowerCase()
+        const shown = praise.filter((p) => (!venueId || p.venue_id === venueId)
+          && (!q || [p.item, p.summary, p.venue_name, p.recorded_by].some((x) => x?.toLowerCase().includes(q))))
+        if (!shown.length || category || focusId) return null
+        const list = praiseOpen ? shown : shown.slice(0, 3)
+        return (
+          <Card className="mt-4 overflow-hidden border-ok/25">
+            <div className="flex items-center gap-2 bg-ok-soft/70 px-4 py-2.5">
+              <Icon name="checkCircle" className="size-[18px] text-ok" />
+              <p className="font-semibold text-ink">Good feedback</p>
+              <span className="rounded-full bg-white/70 px-2 py-0.5 text-xs font-semibold tabular-nums text-ok">{shown.length}</span>
+            </div>
+            <ul className="divide-y divide-line">
+              {list.map((p) => (
+                <li key={p.id} className="px-4 py-2.5">
+                  <p className="text-sm leading-relaxed">
+                    {p.item && <span className="font-semibold">{p.item}: </span>}
+                    <span className="text-ink/85">{p.summary}</span>
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {[p.venue_name ?? 'Venue not identified', personName(p.recorded_by), multiDay ? fullDate(p.event_day) : null,
+                      new Date(p.created_at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' })].filter(Boolean).join('  |  ')}
+                  </p>
+                </li>
+              ))}
+            </ul>
+            {shown.length > 3 && (
+              <button type="button" onClick={() => setPraiseOpen((o) => !o)}
+                className="w-full border-t border-line px-4 py-2 text-sm font-semibold text-ink/80 hover:bg-subtle">
+                {praiseOpen ? 'Show less' : `Show all ${shown.length}`}
+              </button>
+            )}
+          </Card>
+        )
+      })()}
+
       <div className="mt-5">
         {loading ? (
           <div className="space-y-4">
@@ -350,7 +421,7 @@ export function IssuesPage() {
                               <div className="@container pb-1">
                                 <IssueTableHead />
                                 <ul className="divide-y divide-line">
-                                  {sortByItem(e.issues, (i) => i.item).map((i) => <IssueCard key={i.issue_id} issue={i} focused={i.submission_id === focusId} />)}
+                                  {sortByItem(e.issues, (i) => i.item).map((i) => <IssueCard key={i.issue_id} issue={i} focused={i.submission_id === focusId} onDeleted={isAdmin ? () => void load(true) : undefined} />)}
                                 </ul>
                               </div>
                             </div>

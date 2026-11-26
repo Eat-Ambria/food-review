@@ -17,7 +17,6 @@ export async function login(username: string, pin: string): Promise<LoginResult>
           ok: false,
           reason: (body?.reason as LoginFailReason) ?? 'unknown',
           message: body?.error ?? 'Login failed.',
-          attemptsLeft: body?.attempts_left,
         }
       } catch { }
     }
@@ -35,11 +34,14 @@ export async function login(username: string, pin: string): Promise<LoginResult>
     refresh_token: data.refresh_token,
   })
   if (sessErr) return { ok: false, reason: 'unknown', message: 'Could not start your session. Please try again.' }
-  return { ok: true }
+  return { ok: true, username: typeof data.username === 'string' ? data.username : undefined }
 }
 
 export async function logout(): Promise<void> {
-  await supabase.auth.signOut()
+  try {
+    for (const key of Object.keys(localStorage)) if (key.startsWith('my-submissions:')) localStorage.removeItem(key)
+  } catch { }
+  await supabase.auth.signOut({ scope: 'local' })
 }
 
 export async function fetchMyProfile(userId: string): Promise<AppUser | null> {

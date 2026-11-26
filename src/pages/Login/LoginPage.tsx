@@ -37,16 +37,14 @@ export function LoginPage() {
     const res = await login(username, pin)
     if (res.ok) {
       try {
-        if (remember) localStorage.setItem(LAST_USERNAME_KEY, username.trim().toLowerCase())
+        if (remember) localStorage.setItem(LAST_USERNAME_KEY, res.username ?? username.trim().toLowerCase())
         else localStorage.removeItem(LAST_USERNAME_KEY)
       } catch { }
     }
     setBusy(false)
     if (!res.ok) {
       setPin('')
-      setError(res.attemptsLeft !== undefined && res.attemptsLeft > 0
-        ? `${res.message} ${res.attemptsLeft} attempt${res.attemptsLeft === 1 ? '' : 's'} left before the account locks.`
-        : res.message)
+      setError(res.message)
     }
 
   }
