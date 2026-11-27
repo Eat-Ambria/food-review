@@ -525,7 +525,8 @@ async function processSubmission(db: Db, submissionId: string, actorId: string |
     const venueName = new Map(venues.map((v) => [v.id, v.venue_name]))
     const mainVenueId = (ev?.venue_id as string) ?? ((match.venue as { id?: string } | null)?.id ?? null)
     const mainDate = (ev?.date as string) ?? (match.date as string | null) ?? null
-    const eventInfo = (e: Record<string, unknown>) => ({
+    const savedDate = match.status === 'matched' ? ((ev?.date as string) ?? (match.date as string | null) ?? null) : null
+    const eventInfo =(e: Record<string, unknown>) => ({
       calendar_event_id: e.calendar_event_id, date: e.date, guest_name: e.guest_name,
       function_name: e.function_name, shift: e.shift, sub_venue: e.sub_venue, title: e.title,
     })
@@ -571,7 +572,7 @@ async function processSubmission(db: Db, submissionId: string, actorId: string |
         submission_id: submissionId,
         item: c.item,
         venue_id: resolveVenue(isDishWord(c.venue_mentioned, said.words) ? null : c.venue_mentioned, venues) ?? mainVenueId,
-        event_day: mainDate ?? new Date(new Date(recordedAt).getTime() + 5.5 * 3600_000).toISOString().slice(0, 10),
+        event_day: savedDate ?? new Date(new Date(claimed.created_at as string).getTime() + 5.5 * 3600_000).toISOString().slice(0, 10),
         summary: c.summary,
         original_text: c.original_text,
       })))
@@ -591,7 +592,7 @@ async function processSubmission(db: Db, submissionId: string, actorId: string |
       next_attempt_at: calendarDown ? new Date(Date.now() + Math.min(60, 2 ** attempt) * 60_000).toISOString() : null,
       locked_at: null,
       event_match: match,
-      event_date: (ev?.date as string) ?? (match.date as string | null) ?? null,
+      event_date: savedDate,
       venue_id: (ev?.venue_id as string) ?? ((match.venue as { id?: string } | null)?.id ?? null),
       calendar_event_id: (ev?.calendar_event_id as string) ?? null,
       guest_name: (ev?.guest_name as string) ?? null,
@@ -599,7 +600,7 @@ async function processSubmission(db: Db, submissionId: string, actorId: string |
       extraction: { model: usedModel, issues, compliments, processed_at: new Date().toISOString() },
 
       issue_data: {
-        event_date: (ev?.date as string) ?? (match.date as string | null) ?? null,
+        event_date: savedDate,
         venue: (ev?.venue_name as string) ?? ((match.venue as { name?: string } | null)?.name ?? null),
         guest_name: (ev?.guest_name as string) ?? null,
         function_name: (ev?.function_name as string) ?? null,

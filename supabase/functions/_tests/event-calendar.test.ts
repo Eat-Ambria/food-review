@@ -33,6 +33,13 @@ describe('detectDates', () => {
     expect(dates('15.11.26')).toEqual(['2026-11-15'])
     expect(dates('2-3 log aaye the')).toEqual([])
     expect(dates('rating 3.4 thi')).toEqual([])
+    expect(dates('1/2 plate paneer kam tha')).toEqual([])
+    expect(dates('3/4 khana bach gaya')).toEqual([])
+    expect(dates('2/3 log aaye')).toEqual([])
+    expect(dates('5/11 2 kg')).toEqual(['2026-11-05'])
+    expect(dates('5/8 ko function tha')).toEqual(['2026-08-05'])
+    expect(dates('12/11 ko function tha')).toEqual(['2026-11-12'])
+    expect(dates('1/2 ko function tha')).toEqual(['2026-02-01'])
   })
 
   it('"15 tarikh" = this month, or last month if that day has not come yet', () => {

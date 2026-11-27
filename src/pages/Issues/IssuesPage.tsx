@@ -16,7 +16,7 @@ import { useBarTitle } from '../../layouts/barTitle'
 import { Button } from '../../components/ui/Button'
 import { Icon } from '../../components/Icon'
 import { SHIFT_ORDER, shiftIcon } from '../../utils/categoryStyle'
-import { dayMonth } from '../../utils/dates'
+import { dayMonth, istDayOf } from '../../utils/dates'
 import { personName } from '../../utils/personName'
 import { displayItem } from '../../utils/itemName'
 
@@ -321,6 +321,7 @@ export function IssuesPage() {
             <ul className="divide-y divide-line">
               {list.map((p) => (
                 <PraiseRow key={p.id} p={p} meta={[p.venue_name ?? 'Venue not identified', personName(p.recorded_by), multiDay ? fullDate(p.event_day) : null,
+                  istDayOf(p.created_at) !== p.event_day ? `Recorded ${dayMonth(istDayOf(p.created_at))}` : null,
                   new Date(p.created_at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' })].filter(Boolean).join('  |  ')} />
               ))}
             </ul>

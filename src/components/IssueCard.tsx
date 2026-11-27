@@ -25,11 +25,12 @@ const shortDay = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { da
 const fullStamp = (iso: string) => new Date(iso).toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' })
 
 function Reported({ issue }: { issue: FeedIssue }) {
-  const otherDay = istDay(issue.created_at) !== issue.event_day
+  const rec = issue.recorded_at ?? issue.created_at
+  const otherDay = istDay(rec) !== issue.event_day
   return (
-    <span title={`Reported ${fullStamp(issue.created_at)}`} className="whitespace-nowrap tabular-nums @5xl:text-sm @5xl:text-muted">
-      {otherDay && <span className="font-semibold text-ink/80">{shortDay(issue.created_at)} · </span>}
-      {time(issue.created_at)}
+    <span title={`Reported ${fullStamp(rec)}`} className="whitespace-nowrap tabular-nums @5xl:text-sm @5xl:text-muted">
+      {otherDay && <span className="block text-[11px] font-medium text-ink/60">Recorded {shortDay(rec)}</span>}
+      {time(rec)}
     </span>
   )
 }

@@ -31,6 +31,7 @@ export interface FeedIssue {
   is_serious: boolean
   serious_keywords: string[] | null
   recorded_by_mobile?: string | null
+  recorded_at?: string | null
 }
 
 export interface Compliment {
@@ -55,13 +56,18 @@ export async function fetchIssues(opts: { from: string; to: string; venueId?: st
 
 export async function submissionDays(submissionId: string): Promise<{ from: string; to: string } | null> {
   const [{ data: sub }, { data: issues }] = await Promise.all([
-    supabase.from('submissions').select('event_date, created_at').eq('id', submissionId).maybeSingle(),
+    supabase.from('submissions').select('event_date, event_match, created_at').eq('id', submissionId).maybeSingle(),
     supabase.from('issues').select('event_info').eq('submission_id', submissionId),
   ])
   if (!sub) return null
   const recorded = new Date(new Date(sub.created_at as string).getTime() + 5.5 * 3600_000).toISOString().slice(0, 10)
-  const fallback = (sub.event_date as string | null) ?? recorded
-  const days = (issues ?? []).map((i) => ((i.event_info as { date?: string } | null)?.date ?? fallback).slice(0, 10))
+  const matched = (sub.event_match as { status?: string } | null)?.status === 'matched' && sub.event_date
+  const fallback = matched ? (sub.event_date as string) : recorded
+  const days = (issues ?? []).map((i) => {
+    const info = i.event_info as { date?: string; match_status?: string } | null
+    const ok = info?.match_status === 'matched' || info?.match_status === 'matched_by_admin'
+    return ((ok ? info?.date : null) ?? fallback).slice(0, 10)
+  })
   if (!days.length) days.push(fallback)
   days.sort()
   return { from: days[0], to: days[days.length - 1] }

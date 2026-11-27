@@ -169,6 +169,13 @@ export function detectDates(raw: string, t: string, today: Date): { cands: DateC
 
   for (const m of asciiDigits(raw).matchAll(/\b(\d{1,2})(?:\/(\d{1,2})(?:\/(\d{2,4}))?|([.-])(\d{1,2})\4(\d{2,4}))\b/g)) {
     const month = Number(m[2] ?? m[5]), year = m[3] ?? m[6]
+    if (m[2] !== undefined && m[3] === undefined) {
+      const after = asciiDigits(raw).slice((m.index ?? 0) + m[0].length)
+      const dateWord = /^\s*(?:ko|tarikh|tareekh|date|wale|wali|function)(?![\p{L}\p{M}])/iu.test(after)
+      const fraction = ['1/2', '1/3', '2/3', '1/4', '3/4'].includes(`${m[1]}/${month}`)
+      const unit = /^\s*(?:plates?|kgs?|kilos?|gms?|grams?|litres?|liters?|ltr|glass(?:es)?|cups?|pieces?|pcs|katori|rotis?|spoons?|dozen|portions?|hissa|प्लेट|किलो|गिलास|कटोरी|हिस्सा)(?![\p{L}\p{M}])/iu.test(after)
+      if (!dateWord && (fraction || unit)) continue
+    }
     const d = resolveDayMonth(Number(m[1]), month - 1, today, year ? Number(year) : undefined)
     if (d) add(d, 3, `"${m[0]}"`)
   }
