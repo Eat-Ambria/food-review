@@ -1,8 +1,6 @@
 // Shows all issues to POCs and Admin, grouped by day, venue and function, with filters.
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useAuth } from '../../contexts/AuthContext'
-import { hasAnyRole } from '../../types/auth'
 import { fetchCompliments, fetchIssues, listCategories, submissionDays, type Compliment, type FeedIssue } from '../../services/issueService'
 import { listVenues } from '../../services/venueService'
 import type { Venue } from '../../types/events'
@@ -102,8 +100,6 @@ function ItemsLine({ items }: { items: ItemCount[] }) {
 }
 
 export function IssuesPage() {
-  const { user } = useAuth()
-  const isAdmin = Boolean(user && hasAnyRole(user, ['admin']))
   const [range, setRange] = useState<Range>('today')
   const [from, setFrom] = useState(istToday())
   const [to, setTo] = useState(istToday())
@@ -415,7 +411,7 @@ export function IssuesPage() {
                               <div className="@container pb-1">
                                 <IssueTableHead />
                                 <ul className="divide-y divide-line">
-                                  {sortByItem(e.issues, (i) => i.item).map((i) => <IssueCard key={i.issue_id} issue={i} focused={i.submission_id === focusId} onDeleted={isAdmin ? () => void load(true) : undefined} />)}
+                                  {sortByItem(e.issues, (i) => i.item).map((i) => <IssueCard key={i.issue_id} issue={i} focused={i.submission_id === focusId} onDeleted={() => void load(true)} />)}
                                 </ul>
                               </div>
                             </div>

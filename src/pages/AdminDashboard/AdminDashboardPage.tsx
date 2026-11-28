@@ -13,6 +13,8 @@ import { ItemTag } from '../../components/ItemTag'
 import { Modal } from '../../components/ui/Modal'
 import { itemKey } from '../../utils/itemGroups'
 import { displayItem } from '../../utils/itemName'
+import { DeleteReasonField } from '../../components/DeleteReasonField'
+import { buildDeleteReason, isValidDeleteReason, type DeleteReasonChip } from '../../utils/deleteReason'
 
 const istToday = () => new Date(Date.now() + 5.5 * 3600_000).toISOString().slice(0, 10)
 const minusDays = (iso: string, n: number) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10) }
@@ -244,6 +246,10 @@ export function AdminDashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [askDelete, setAskDelete] = useState<AttentionItem | null>(null)
+  const [chip, setChip] = useState<DeleteReasonChip | null>(null)
+  const [note, setNote] = useState('')
+  const delReason = buildDeleteReason(chip, note)
+  useEffect(() => { setChip(null); setNote('') }, [askDelete])
   const [toast, showToast, hideToast] = useToast()
   const [cron, setCron] = useState<JobRun | null | undefined>(undefined)
 
@@ -378,14 +384,15 @@ export function AdminDashboardPage() {
       <Modal open={Boolean(askDelete)} title="Delete this recording?" onClose={() => setAskDelete(null)}
         footer={<>
           <Button variant="secondary" onClick={() => setAskDelete(null)}>Cancel</Button>
-          <Button variant="danger" loading={Boolean(askDelete && busyId === askDelete.submission_id)}
-            onClick={() => { const a = askDelete; if (a) void act(a.submission_id, () => deleteRecording(a.submission_id).then(() => setAskDelete(null)), 'Recording deleted.') }}>
+          <Button variant="danger" loading={Boolean(askDelete && busyId === askDelete.submission_id)} disabled={!isValidDeleteReason(delReason)}
+            onClick={() => { const a = askDelete; if (a) void act(a.submission_id, () => deleteRecording(a.submission_id, delReason).then(() => setAskDelete(null)), 'Recording deleted.') }}>
             Delete
           </Button>
         </>}>
+        <DeleteReasonField chip={chip} note={note} onChip={setChip} onNote={setNote} disabled={Boolean(askDelete && busyId === askDelete.submission_id)} />
         <p className="line-clamp-3 text-sm leading-relaxed text-ink/85">{askDelete?.transcript}</p>
         <p className="mt-3 text-sm leading-relaxed text-muted">
-          The recording{askDelete && askDelete.issue_count > 0 ? <> and its {askDelete.issue_count} issue{askDelete.issue_count === 1 ? '' : 's'}</> : null} will be removed for everyone, with its audio. This cannot be undone.
+          The recording{askDelete && askDelete.issue_count > 0 ? <> and its {askDelete.issue_count} issue{askDelete.issue_count === 1 ? '' : 's'}</> : null} will be removed for everyone, with its audio. This cannot be undone. The reason is saved in the deletion log.
         </p>
       </Modal>
 

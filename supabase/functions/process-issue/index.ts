@@ -52,6 +52,11 @@ function corsHeaders(origin: string | null): Record<string, string> {
     'Vary': 'Origin',
   }
 }
+const cleanReason = (v: unknown): string | null => {
+  const cp = Array.from(String(v ?? '').replace(/\s+/g, ' ').trim()).slice(0, 500)
+  return cp.length >= 3 ? cp.join('') : null
+}
+
 function reply(origin: string | null, status: number, body: unknown) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' } })
 }
@@ -1009,33 +1014,29 @@ Deno.serve(async (req) => {
   }
 
   if (body.action === 'delete_issue' || body.action === 'delete_submission') {
-    if (!me.roles.includes('admin')) return reply(origin, 403, { error: 'Only an admin can delete.' })
-    let submissionId = String(body.submission_id ?? '')
-    if (body.action === 'delete_issue') {
-      const issueId = String(body.issue_id ?? '')
-      if (!UUID_RE.test(issueId)) return reply(origin, 400, { error: 'Invalid issue id.' })
-      const { data: row } = await db.from('issues').select('submission_id').eq('id', issueId).maybeSingle()
-      if (!row) return reply(origin, 404, { error: 'This issue no longer exists.' })
-      submissionId = row.submission_id as string
-      const { error: delErr } = await db.from('issues').delete().eq('id', issueId)
-      if (delErr) return reply(origin, 500, { error: 'Could not delete the issue.' })
-      const { count } = await db.from('issues').select('id', { count: 'exact', head: true }).eq('submission_id', submissionId)
-      if ((count ?? 0) > 0) return reply(origin, 200, { ok: true, deleted: 'issue' })
-      const { count: praise } = await db.from('compliments').select('id', { count: 'exact', head: true }).eq('submission_id', submissionId)
-      if ((praise ?? 0) > 0) return reply(origin, 200, { ok: true, deleted: 'issue' })
+    if (!me.id) return reply(origin, 403, { error: 'Not allowed.' })
+    const isIssue = body.action === 'delete_issue'
+    const reason = cleanReason(body.reason)
+    if (!reason) return reply(origin, 400, { error: 'Please give a reason for deleting (at least 3 letters).' })
+    const id = String((isIssue ? body.issue_id : body.submission_id) ?? '')
+    if (!UUID_RE.test(id)) return reply(origin, 400, { error: isIssue ? 'Invalid issue id.' : 'Invalid submission id.' })
+    const { data, error } = isIssue
+      ? await db.rpc('delete_issue_logged', { p_issue_id: id, p_actor: me.id, p_reason: reason })
+      : await db.rpc('delete_submission_logged', { p_submission_id: id, p_actor: me.id, p_reason: reason })
+    if (error) {
+      const m = error.message ?? ''
+      if (m.includes('not_allowed')) return reply(origin, 403, { error: isIssue ? 'You can only delete issues you recorded.' : 'Only an admin can delete a whole recording.' })
+      if (m.includes('not_found')) return reply(origin, 404, { error: 'This issue no longer exists.' })
+      if (m.includes('reason_required')) return reply(origin, 400, { error: 'Please give a reason for deleting (at least 3 letters).' })
+      console.error('delete failed', error)
+      return reply(origin, 500, { error: isIssue ? 'Could not delete the issue.' : 'Could not delete the recording.' })
     }
-    if (!UUID_RE.test(submissionId)) return reply(origin, 400, { error: 'Invalid submission id.' })
-    const { data: sub } = await db.from('submissions').select('id, audio_path, audio_deleted_at').eq('id', submissionId).maybeSingle()
-    if (!sub) return reply(origin, 200, { ok: true, deleted: 'recording' })
-    if (sub.audio_path && !sub.audio_deleted_at) {
-      const { error: rmErr } = await db.storage.from('recordings').remove([sub.audio_path as string])
+    const res = data as { deleted: 'issue' | 'recording' | 'none'; audio_path?: string | null }
+    if (res.audio_path) {
+      const { error: rmErr } = await db.storage.from('recordings').remove([res.audio_path])
       if (rmErr) console.error('audio delete failed', rmErr)
     }
-    await db.from('notification_queue').delete().like('dedupe_key', `serious:${submissionId}:%`)
-    await db.from('notification_queue').delete().like('dedupe_key', `new_issues:${submissionId}:%`)
-    const { error: subErr } = await db.from('submissions').delete().eq('id', submissionId)
-    if (subErr) return reply(origin, 500, { error: 'Could not delete the recording.' })
-    return reply(origin, 200, { ok: true, deleted: 'recording' })
+    return reply(origin, 200, { ok: true, deleted: res.deleted === 'issue' ? 'issue' : 'recording' })
   }
 
   return reply(origin, 400, { error: 'Unknown action.' })

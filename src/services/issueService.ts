@@ -32,6 +32,7 @@ export interface FeedIssue {
   serious_keywords: string[] | null
   recorded_by_mobile?: string | null
   recorded_at?: string | null
+  can_delete?: boolean
 }
 
 export interface Compliment {
@@ -139,7 +140,7 @@ export async function lastCronRun(): Promise<JobRun | null> {
   return (data as JobRun | null) ?? null
 }
 
-async function adminDelete(body: Record<string, string>): Promise<'issue' | 'recording'> {
+async function deleteViaFunction(body: Record<string, string>): Promise<'issue' | 'recording'> {
   const { data, error } = await supabase.functions.invoke('process-issue', { body })
   if (error) {
     let message = 'Could not delete.'
@@ -150,8 +151,23 @@ async function adminDelete(body: Record<string, string>): Promise<'issue' | 'rec
   }
   return data?.deleted === 'issue' ? 'issue' : 'recording'
 }
-export const deleteIssue = (issueId: string) => adminDelete({ action: 'delete_issue', issue_id: issueId })
-export const deleteRecording = (submissionId: string) => adminDelete({ action: 'delete_submission', submission_id: submissionId })
+export const deleteIssue = (issueId: string, reason: string) => deleteViaFunction({ action: 'delete_issue', issue_id: issueId, reason })
+export const deleteRecording = (submissionId: string, reason: string) => deleteViaFunction({ action: 'delete_submission', submission_id: submissionId, reason })
+
+export interface DeletionLogEntry {
+  id: number; created_at: string; action: 'delete_issue' | 'delete_submission'; deleted_what: 'issue' | 'recording'; reason: string
+  actor_id: string | null; actor_name: string | null; actor_roles: string[]; actor_is_owner: boolean
+  submission_id: string | null; issue_id: string | null; category: string | null; item: string | null; summary: string | null
+  description: string | null; venue_name: string | null; recorded_by_id: string | null; recorded_by_name: string | null
+  recorded_at: string | null; transcript_snippet: string | null; had_audio: boolean; compliments_removed: number
+  issues: { issue_id: string; category: string | null; item: string | null; summary: string | null; description: string | null }[]
+}
+
+export async function fetchDeletionLog(limit = 200): Promise<DeletionLogEntry[]> {
+  const { data, error } = await supabase.from('deletion_log').select('*').order('created_at', { ascending: false }).limit(limit)
+  if (error) throw new Error('Could not load the deletion log. ' + error.message)
+  return (data ?? []) as DeletionLogEntry[]
+}
 
 export async function retryProcessing(submissionId: string): Promise<void> {
   const { data, error } = await supabase.functions.invoke('process-issue', { body: { action: 'retry', submission_id: submissionId } })

@@ -22,6 +22,7 @@ const ADMIN: NavItem[] = [
   { to: '/admin/users', label: 'Users', icon: 'user', roles: ['admin'] },
   { to: '/admin/venues', label: 'Venues', icon: 'pin', roles: ['admin'] },
   { to: '/admin/alerts', label: 'Serious Alerts', short: 'Alerts', icon: 'alert', roles: ['admin'] },
+  { to: '/admin/deletions', label: 'Deletion Log', short: 'Deleted', icon: 'trash', roles: ['admin'] },
 ]
 
 function SideLink({ it }: { it: NavItem }) {

@@ -10,6 +10,8 @@ import { CategoryChip } from './CategoryChip'
 import { ItemTag } from './ItemTag'
 import { Spinner } from './ui/Spinner'
 import { personName } from '../utils/personName'
+import { DeleteReasonField } from './DeleteReasonField'
+import { buildDeleteReason, isValidDeleteReason, type DeleteReasonChip } from '../utils/deleteReason'
 
 export const ISSUE_COLS = '@5xl:grid @5xl:grid-cols-[8.5rem_6.5rem_10rem_minmax(0,1fr)_7.5rem_7.75rem_1.25rem] @5xl:items-center @5xl:gap-x-4'
 
@@ -61,10 +63,14 @@ export function IssueCard({ issue, focused = false, onDeleted }: { issue: FeedIs
   const [askDelete, setAskDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteErr, setDeleteErr] = useState<string | null>(null)
+  const [chip, setChip] = useState<DeleteReasonChip | null>(null)
+  const [note, setNote] = useState('')
+  const reason = buildDeleteReason(chip, note)
+  useEffect(() => { setChip(null); setNote(''); setDeleteErr(null) }, [askDelete])
   const remove = async () => {
     setDeleting(true)
     setDeleteErr(null)
-    try { await deleteIssue(issue.issue_id); setAskDelete(false); onDeleted?.() } catch (e) { setDeleteErr((e as Error).message) }
+    try { await deleteIssue(issue.issue_id, reason); setAskDelete(false); onDeleted?.() } catch (e) { setDeleteErr((e as Error).message) }
     setDeleting(false)
   }
 
@@ -146,7 +152,7 @@ export function IssueCard({ issue, focused = false, onDeleted }: { issue: FeedIs
           ) : (
             <p className="text-xs text-muted">Recording no longer available (auto-deleted after the retention period).</p>
           )}
-          {onDeleted && (
+          {onDeleted && issue.can_delete && (
             <div className="flex justify-end">
               <Button variant="ghost" size="sm" className="hover:bg-danger-soft! hover:text-danger!" onClick={() => setAskDelete(true)}>
                 <Icon name="trash" />Delete issue
@@ -158,12 +164,13 @@ export function IssueCard({ issue, focused = false, onDeleted }: { issue: FeedIs
       <Modal open={askDelete} title="Delete this issue?" onClose={() => setAskDelete(false)}
         footer={<>
           <Button variant="secondary" onClick={() => setAskDelete(false)}>Cancel</Button>
-          <Button variant="danger" loading={deleting} onClick={() => void remove()}>Delete</Button>
+          <Button variant="danger" loading={deleting} disabled={!isValidDeleteReason(reason)} onClick={() => void remove()}>Delete</Button>
         </>}>
+        <DeleteReasonField chip={chip} note={note} onChip={setChip} onNote={setNote} disabled={deleting} />
         <p className="text-sm leading-relaxed text-muted">
           <b className="text-ink">{issue.item ?? issue.category}</b>: {issue.summary ?? issue.description}
         </p>
-        <p className="mt-3 text-sm leading-relaxed text-muted">It will be removed for everyone and cannot be undone. If it is the last issue of this recording, the whole recording is deleted too, with any good feedback from it.</p>
+        <p className="mt-3 text-sm leading-relaxed text-muted">It will be removed for everyone and cannot be undone. If it is the last issue of this recording, the whole recording is deleted too, with any good feedback from it. The reason is saved in the deletion log.</p>
         {deleteErr && <p className="mt-3 text-sm font-semibold text-danger">{deleteErr}</p>}
       </Modal>
     </li>

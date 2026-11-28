@@ -13,6 +13,7 @@ import { IssuesPage } from './pages/Issues/IssuesPage'
 import { MySubmissionsPage } from './pages/MySubmissions/MySubmissionsPage'
 import { AdminDashboardPage } from './pages/AdminDashboard/AdminDashboardPage'
 import { AlertsPage } from './pages/Alerts/AlertsPage'
+import { DeletionLogPage } from './pages/DeletionLog/DeletionLogPage'
 import { OfflineBanner } from './components/OfflineBanner'
 import { UpdateNotice } from './components/UpdateNotice'
 import { PullToRefresh } from './components/PullToRefresh'
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="/admin/users" element={<RequireAuth roles={['admin']}><UserManagementPage /></RequireAuth>} />
             <Route path="/admin/venues" element={<RequireAuth roles={['admin']}><VenuesPage /></RequireAuth>} />
             <Route path="/admin/alerts" element={<RequireAuth roles={['admin']}><AlertsPage /></RequireAuth>} />
+            <Route path="/admin/deletions" element={<RequireAuth roles={['admin']}><DeletionLogPage /></RequireAuth>} />
             <Route path="/admin/users/import" element={<RequireAuth roles={['admin']}><ImportUsersPage /></RequireAuth>} />
           </Route>
 
